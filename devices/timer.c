@@ -94,10 +94,10 @@ timer_sleep (int64_t ticks) {
 		return; /* tick요청값이 0일 경우 반환 */
 	}
 
-	ASSERT (intr_get_level () == INTR_ON); /**/
-	int64_t wake_tick = timer_ticks() + ticks;
+	ASSERT (intr_get_level () == INTR_ON);
+	int64_t wake_tick = timer_ticks() + ticks; /* 현재 실행 중인 스레드가 깨어나야 할 시간 계산 */
 
-	thread_sleep(wake_tick);
+	thread_sleep(wake_tick); /* 현재 실행 중인 스레드를 재운다. */
 }
 
 /* Suspends execution for approximately MS milliseconds. */
@@ -128,11 +128,14 @@ timer_print_stats (void) {
 static void
 timer_interrupt (struct intr_frame *args UNUSED) {
 	ticks++;
+	/* 기존에 있던 타이머 인터럽트를 수정해야 한다. */
 
+	/* 깨어날 스레드가 있는지 확인한다. */
 	if (ticks >= get_next_tick_to_awake()){
+		/* 스레드를 깨운다.*/
 		thread_awake(ticks);
 	}
-	thread_tick ();
+	thread_tick (); // 현재 실행 중인 스레드 관리
 }
 
 /* Returns true if LOOPS iterations waits for more than one timer

@@ -147,6 +147,10 @@ thread_tick (void) {
 	struct thread *t = thread_current ();
 
 	/* Update statistics. */
+	/* 
+	  - 통계 갱신용 : 실행 중인 상태를 분류해 각각 개수 증가 
+	  - 나중에 스케줄링 정책 분석, MLFQ 계층 구현 등에 사용 가능
+	*/
 	if (t == idle_thread)
 		idle_ticks++;
 #ifdef USERPROG
@@ -157,8 +161,13 @@ thread_tick (void) {
 		kernel_ticks++;
 
 	/* Enforce preemption. */
+	/* 
+	  - TIME_SLICE 만큼 실행했는지 검사 -> 선점 유도 
+	  - thread_ticks : 현재 실행 스레드가 연속으로 사용한 tick 수
+	  - TIME_SLICE : 스레드가 선점 없이 최대 사용할 수 있는 tick 수 -> 4   
+	*/
 	if (++thread_ticks >= TIME_SLICE)
-		intr_yield_on_return ();
+		intr_yield_on_return (); // 타이머 인터럽트가 끝나는 시점에 thread_yield() 실행
 }
 
 /* Prints thread statistics. */
@@ -598,36 +607,42 @@ allocate_tid (void) {
 
 /* change sleep thread  */
 void thread_sleep(int64_t ticks){
-	struct  thread *curr = thread_current();
+	struct thread *curr = thread_current(); /* 현재 실행 중인 스레드 구조체 */
 
-	ASSERT(curr != idle_thread);
+	ASSERT(curr != idle_thread); /* 현재 실행 중인 스레드가 idle 스레드가 아니어야 한다. */
+	/*
+	  - intr_disable() : 현재 CPU에서 인터럽트를 비활성화한다. 즉 외부 인터럽트가 발생해도 무시한다.
+	  - enum iter_lebel : 인터럽트가 활성화 되어 있는지 비활성화 되어 있는지를 나타내는 열거형
+	  - old_level : 인터럽트를 끄기 전에, 원래 인터럽트 상태를 저장해두는 변수
+	*/
 	enum intr_level old_level = intr_disable();
 
-	curr->weakeup_tick = ticks;
+	curr->weakeup_tick = ticks; /* 현재 선택한 스레드에 깨어날 시간을 설정한다. */
 
-	update_next_tick_to_awake(ticks);
+	update_next_tick_to_awake(ticks); /* 모든 sleep 상태인 스레드 중 가장 빨리 깨어날 식간을 추적하기 위해 */
 	
-	list_push_back(&sleep_list, &curr->elem);
+	list_push_back(&sleep_list, &curr->elem); /* sleep 리스트에 현재 스레드 정보를 제일 뒤에 추가한다.*/
 
-	thread_block();
+	thread_block(); /* 현재 스레드를 block 상태로 만든다. */
 
-	intr_set_level(old_level);
+	intr_set_level(old_level); /* 중지시켰던 인터럽트를 다시 활성화 시킨다. */
 }
 
 void thread_awake(int64_t ticks){
-	next_tick_to_awake = INT64_MAX;
+	next_tick_to_awake = INT64_MAX; /* 사료 가장 빠른 시간을 계산하기 위해 MAX 값을 사용 */
 
-	struct list_elem *e = list_begin(&sleep_list);
+	struct list_elem *e = list_begin(&sleep_list); /* 리스트의 시작점 부터 순회 준비 */
 
-	while (e != list_end(&sleep_list)){
+	while (e != list_end(&sleep_list)){ /* sleep_list 전체를 돌면서 깰 스레드 확인 */
+		/* 현재 리스트 노드로부터 스레드를 역추적 (elem이 thread 내부에 있으므로 list_entry 매크로 사용) */
 		struct thread *t = list_entry(e, struct thread, elem);
 
-		if (t->weakeup_tick <= ticks){
-			e = list_remove(e);
-			thread_unblock(t);
+		if (t->weakeup_tick <= ticks){ /* 깨어날 시간이 된 경우 */
+			e = list_remove(e); // 리스트에서 제거
+			thread_unblock(t); // Ready 상태로 복귀
 		} else{
-			e = list_next(e);
-			update_next_tick_to_awake(t->weakeup_tick);
+			e = list_next(e); // 다음 스레드로 이동
+			update_next_tick_to_awake(t->weakeup_tick); // 더빠른 tick을 추적하기 위해 갱신
 		}
 		
 	}
@@ -635,6 +650,10 @@ void thread_awake(int64_t ticks){
 }
 
 void update_next_tick_to_awake(int64_t ticks){
+	/* 
+	  - next_tick_to_awake 는 현재까지 확인한 가장 빠른 깨야 할 시간이다.
+	  - 전역변수 next_tick_to_awake 보다 ticks가 빠르면 갱신한다. 
+	*/
 	next_tick_to_awake = (next_tick_to_awake > ticks) ? ticks : next_tick_to_awake;
 }
 
