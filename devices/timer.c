@@ -90,11 +90,14 @@ timer_elapsed (int64_t then) {
 /* Suspends execution for approximately TICKS timer ticks. */
 void
 timer_sleep (int64_t ticks) {
-	int64_t start = timer_ticks ();
+	if (ticks <= 0){
+		return; /* tick요청값이 0일 경우 반환 */
+	}
 
-	ASSERT (intr_get_level () == INTR_ON);
-	while (timer_elapsed (start) < ticks)
-		thread_yield ();
+	ASSERT (intr_get_level () == INTR_ON); /**/
+	int64_t wake_tick = timer_ticks() + ticks;
+
+	thread_sleep(wake_tick);
 }
 
 /* Suspends execution for approximately MS milliseconds. */
@@ -125,6 +128,10 @@ timer_print_stats (void) {
 static void
 timer_interrupt (struct intr_frame *args UNUSED) {
 	ticks++;
+
+	if (ticks >= get_next_tick_to_awake()){
+		thread_awake(ticks);
+	}
 	thread_tick ();
 }
 

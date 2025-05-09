@@ -40,6 +40,11 @@ static struct lock tid_lock;
 /* Thread destruction requests */
 static struct list destruction_req;
 
+/* sleep queue */
+static struct list sleep_list;
+static int64_t next_tick_to_awake;
+
+
 /* Statistics. */
 static long long idle_ticks;    /* # of timer ticks spent idle. */
 static long long kernel_ticks;  /* # of timer ticks in kernel threads. */
@@ -109,6 +114,8 @@ thread_init (void) {
 	lock_init (&tid_lock);
 	list_init (&ready_list);
 	list_init (&destruction_req);
+	list_init (&sleep_list);
+	next_tick_to_awake = INT64_MAX;
 
 	/* Set up a thread structure for the running thread. */
 	initial_thread = running_thread ();
@@ -587,4 +594,50 @@ allocate_tid (void) {
 	lock_release (&tid_lock);
 
 	return tid;
+}
+
+/* change sleep thread  */
+void thread_sleep(int64_t ticks){
+	struct  thread *curr = thread_current();
+
+	ASSERT(curr != idle_thread);
+	enum intr_level old_level = intr_disable();
+
+	curr->weakeup_tick = ticks;
+
+	update_next_tick_to_awake(ticks);
+	
+	list_push_back(&sleep_list, &curr->elem);
+
+	thread_block();
+
+	intr_set_level(old_level);
+}
+
+void thread_awake(int64_t ticks){
+	next_tick_to_awake = INT64_MAX;
+
+	struct list_elem *e = list_begin(&sleep_list);
+
+	while (e != list_end(&sleep_list)){
+		struct thread *t = list_entry(e, struct thread, elem);
+
+		if (t->weakeup_tick <= ticks){
+			e = list_remove(e);
+			thread_unblock(t);
+		} else{
+			e = list_next(e);
+			update_next_tick_to_awake(t->weakeup_tick);
+		}
+		
+	}
+	
+}
+
+void update_next_tick_to_awake(int64_t ticks){
+	next_tick_to_awake = (next_tick_to_awake > ticks) ? ticks : next_tick_to_awake;
+}
+
+int64_t get_next_tick_to_awake(void){
+	return next_tick_to_awake;
 }
