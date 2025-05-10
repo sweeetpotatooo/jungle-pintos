@@ -1,0 +1,19 @@
+{
+"name": "Jungle Pintos",
+"build": {
+    "dockerfile": "Dockerfile",
+    "context": ".."
+},
+"customizations": {
+    "vscode": {
+        "extensions": [
+            "ms-vscode.cpptools",
+            "ms-vscode.cpptools-extension-pack",
+            "ms-vscode.cpptools-themes"
+        ]
+    }
+},
+"workspaceMount": "source=${localWorkspaceFolder},target=/workspaces/pintos_lab_docker,type=bind",
+"workspaceFolder": "/workspaces/pintos_lab_docker",
+"remoteUser": "jungle"
+}
