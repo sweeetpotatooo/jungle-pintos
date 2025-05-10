@@ -1,0 +1,102 @@
+# 빌드 결과물
+**/build/
+build/
+*.o
+*.ko
+*.obj
+*.elf
+*.ilk
+*.map
+*.exp
+*.gch
+*.pch
+*.so
+.so.
+*.dylib
+*.dll
+*.a
+*.la
+*.lo
+*.lib
+*.exe
+*.out
+*.app
+*.hex
+*.dSYM/
+*.su
+*.idb
+*.pdb
+
+# 커널 모듈 컴파일 결과물
+.mod
+*.cmd
+.tmp_versions/
+modules.order
+Module.symvers
+Mkfile.old
+dkms.conf
+
+# 디버그 파일
+*.dSYM/
+*.su
+*.idb
+*.pdb
+
+# 의존성 파일
+*.d
+
+# 프리컴파일된 헤더
+*.gch
+*.pch
+
+# 링커 출력
+*.ilk
+*.map
+*.exp
+
+# 실행 파일
+*.exe
+*.out
+*.app
+.i86
+*.x86_64
+*.hex
+
+# 디버그 심볼 파일
+*.dSYM/
+*.su
+*.idb
+*.pdb
+
+# 코어 덤프 파일
+core
+
+# 임시 파일
+*~
+*.swp
+*.swo
+.DS_Store
+Thumbs.db
+
+# IDE 관련 파일
+.vscode/
+.idea/
+*.sublime-workspace
+*.sublime-project
+.vs/
+*.user
+*.userosscache
+*.sln.docstates
+*.userprefs
+
+# 자동 생성 파일
+autom4te.cache/
+*.log
+config.status
+config.h
+
+# Pintos 특화 파일
+*.errors
+*.output
+*.result
+
