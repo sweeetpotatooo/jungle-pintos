@@ -158,9 +158,9 @@ int64_t get_next_tick_to_awake(void);
 
 void donation_priority(void);
 
-#endif /* threads/thread.h */
-
 void cmp_nowNfirst (void);
 bool cmp_priority (const struct list_elem *a, const struct list_elem *b);
 bool cmp_donation_priority (const struct list_elem *a, const struct list_elem *b);
 bool list_contains(struct list *list, struct list_elem *elem);
+
+#endif /* threads/thread.h */

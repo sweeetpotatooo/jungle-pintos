@@ -700,27 +700,22 @@ void cmp_nowNfirst (void){
 		}	
 }
 
-void donation_priority(void){
-	struct thread *curr = thread_current();
-	struct lock *lock = curr->wait_on_lock;
-	int depth = 0;
+void donation_priority(void) {
+    struct thread *curr = thread_current();
+    struct lock *lock = curr->wait_on_lock;
+    int depth = 0;
 
-	while(lock != NULL && lock->holder != NULL && depth < MAX_DONATION_DEPTH){
-		if (lock->holder->priority < curr->priority) {
-            // 우선순위 기부
+    while (lock != NULL && lock->holder != NULL && depth < MAX_DONATION_DEPTH) {
+        if (lock->holder->priority < curr->priority) {
             lock->holder->priority = curr->priority;
             lock->holder->is_donated = true;
-            
-            // donations 리스트에 현재 스레드 추가 (이미 있지 않다면)
-            if (!list_contains(&lock->holder->donations, &curr->donations_elem)) {
-                list_push_back(&lock->holder->donations, &curr->donations_elem);
-            }
         }
-		curr = lock->holder;
+        curr = lock->holder;
         lock = curr->wait_on_lock;
         depth++;
-	}
+    }
 }
+
 
 bool list_contains(struct list *list, struct list_elem *elem) {
     struct list_elem *e;
