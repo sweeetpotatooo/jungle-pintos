@@ -96,6 +96,13 @@ struct thread {
 	/* Shared between thread.c and synch.c. */
 	struct list_elem elem;              /* List element. */
 
+	/* Priority Donation Field */
+	int init_priority; /* 원래 우선순위 */
+	struct list donations; /* 이 스레드에게 우선순위를 기부한 스레드의 목록 */
+	struct list_elem donations_elem; /* 다른 스레드의 donations 리스트에 포함되기 위한 요소 */
+	struct lock *wait_on_lock; /* 이 스레드가 기다리고 있는 락 */
+	bool is_donated; /* 우선순위를 기부 받았는지 여부 */
+
 #ifdef USERPROG
 	/* Owned by userprog/process.c. */
 	uint64_t *pml4;                     /* Page map level 4 */
@@ -148,7 +155,12 @@ void thread_sleep(int64_t ticks);
 void thread_awake(int64_t ticks);
 void update_next_tick_to_awake(int64_t tick);
 int64_t get_next_tick_to_awake(void);
+
+void donation_priority(void);
+
 #endif /* threads/thread.h */
 
 void cmp_nowNfirst (void);
-bool cmp_priority (const struct list_elem *a, const struct list_elem *b, void *aux UNUSED);
+bool cmp_priority (const struct list_elem *a, const struct list_elem *b);
+bool cmp_donation_priority (const struct list_elem *a, const struct list_elem *b);
+bool list_contains(struct list *list, struct list_elem *elem);
