@@ -44,6 +44,7 @@ static struct list destruction_req;
 static struct list sleep_list;
 static int64_t next_tick_to_awake;
 
+#define MAX_DONATION_DEPTH 8
 
 /* Statistics. */
 static long long idle_ticks;    /* # of timer ticks spent idle. */
@@ -430,6 +431,10 @@ init_thread (struct thread *t, const char *name, int priority) {
 	t->tf.rsp = (uint64_t) t + PGSIZE - sizeof (void *);
 	t->priority = priority;
 	t->magic = THREAD_MAGIC;
+
+	t->init_priority = priority;
+	list_init(&t->donations);
+	t->wait_on_lock = NULL;
 }
 
 /* Chooses and returns the next thread to be scheduled.  Should
@@ -675,6 +680,15 @@ bool cmp_priority (const struct list_elem *a, const struct list_elem *b)
     return t1->priority > t2->priority; // 첫번째 우선순위가 2번째 스레드 우선순위보다 높으면 True(1), 아니면 False(0)
 }
 
+bool cmp_donation_priority (const struct list_elem *a, const struct list_elem *b)
+{
+    const struct thread *t1 = list_entry (a, struct thread, donations_elem);	
+    const struct thread *t2 = list_entry (b, struct thread, donations_elem);	
+
+    return t1->priority > t2->priority; // 첫번째 우선순위가 2번째 스레드 우선순위보다 높으면 True(1), 아니면 False(0)
+}
+
+
 // 현재와 가장 높은 우선 순위 비교
 void cmp_nowNfirst (void){
 	if(!list_empty(&ready_list)){ // ready_list가 비어있지않을때만 
@@ -683,5 +697,31 @@ void cmp_nowNfirst (void){
 		if(thread_current()->priority < highest_thread->priority){     // 현재보다 우선순위가 높으면 양보
 			thread_yield();
 			}
-		}
+		}	
+}
+
+void donation_priority(void) {
+    struct thread *curr = thread_current();
+    struct lock *lock = curr->wait_on_lock;
+    int depth = 0;
+
+    while (lock != NULL && lock->holder != NULL && depth < MAX_DONATION_DEPTH) {
+        if (lock->holder->priority < curr->priority) {
+            lock->holder->priority = curr->priority;
+            lock->holder->is_donated = true;
+        }
+        curr = lock->holder;
+        lock = curr->wait_on_lock;
+        depth++;
+    }
+}
+
+
+bool list_contains(struct list *list, struct list_elem *elem) {
+    struct list_elem *e;
+    for (e = list_begin(list); e != list_end(list); e = list_next(e)) {
+        if (e == elem) return true;
+    }
+    return false;
+
 }
