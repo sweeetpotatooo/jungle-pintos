@@ -222,7 +222,8 @@ thread_create (const char *name, int priority,
 
 	/* Add to run queue. */
 	thread_unblock (t);
-
+	//현재와 가장 높은 우선순위 비교후 현재보다 우선순위가 높다면 양보
+	cmp_nowNfirst();
 	return tid;
 }
 
@@ -256,7 +257,8 @@ thread_unblock (struct thread *t) {
 
 	old_level = intr_disable ();
 	ASSERT (t->status == THREAD_BLOCKED);
-	list_push_back (&ready_list, &t->elem);
+	//FIFO-> priority로 변경
+	list_insert_ordered (&ready_list, &t->elem, cmp_priority, NULL);
 	t->status = THREAD_READY;
 	intr_set_level (old_level);
 }
@@ -310,24 +312,27 @@ thread_exit (void) {
 
 /* Yields the CPU.  The current thread is not put to sleep and
    may be scheduled again immediately at the scheduler's whim. */
+//FIFO-> 우선순위
 void
 thread_yield (void) {
-	struct thread *curr = thread_current ();
-	enum intr_level old_level;
+    struct thread *curr = thread_current ();
+    enum intr_level old_level;
 
-	ASSERT (!intr_context ());
+    ASSERT (!intr_context ());
 
-	old_level = intr_disable ();
-	if (curr != idle_thread)
-		list_push_back (&ready_list, &curr->elem);
-	do_schedule (THREAD_READY);
-	intr_set_level (old_level);
+    old_level = intr_disable ();
+    if (curr != idle_thread)
+        list_insert_ordered (&ready_list, &curr->elem, cmp_priority, NULL);
+    do_schedule (THREAD_READY);
+    intr_set_level (old_level);
 }
 
+
 /* Sets the current thread's priority to NEW_PRIORITY. */
-void
-thread_set_priority (int new_priority) {
-	thread_current ()->priority = new_priority;
+// 우선 순위 변경 -> 우선순위에 따라 선점 
+void thread_set_priority (int new_priority) {
+	thread_current()->priority = new_priority;
+	cmp_nowNfirst();
 }
 
 /* Returns the current thread's priority. */
@@ -659,4 +664,24 @@ void update_next_tick_to_awake(int64_t ticks){
 
 int64_t get_next_tick_to_awake(void){
 	return next_tick_to_awake;
+}
+
+// 우선순위 비교
+bool cmp_priority (const struct list_elem *a, const struct list_elem *b)
+{
+    const struct thread *t1 = list_entry (a, struct thread, elem);	
+    const struct thread *t2 = list_entry (b, struct thread, elem);	
+
+    return t1->priority > t2->priority; // 첫번째 우선순위가 2번째 스레드 우선순위보다 높으면 True(1), 아니면 False(0)
+}
+
+// 현재와 가장 높은 우선 순위 비교
+void cmp_nowNfirst (void){
+	if(!list_empty(&ready_list)){ // ready_list가 비어있지않을때만 
+		struct thread *highest_thread = list_entry(list_begin(&ready_list), struct thread, elem);	
+	
+		if(thread_current()->priority < highest_thread->priority){     // 현재보다 우선순위가 높으면 양보
+			thread_yield();
+			}
+		}
 }
