@@ -127,15 +127,37 @@ timer_print_stats (void) {
 /* Timer interrupt handler. */
 static void
 timer_interrupt (struct intr_frame *args UNUSED) {
+	/* 틱을 관리한다. */
 	ticks++;
-	/* 기존에 있던 타이머 인터럽트를 수정해야 한다. */
+	thread_tick ();
 
-	/* 깨어날 스레드가 있는지 확인한다. */
-	if (ticks >= get_next_tick_to_awake()){
-		/* 스레드를 깨운다.*/
-		thread_awake(ticks);
+	// MLFQ 기능
+	if (thread_mlfqs) 
+	{
+		/* 매 타이머 틱마다 현재 실행 중인 스레드의 recent_cpu 값을 1 증가 */
+		mlfqs_increment();
+
+		/* 4틱마다 실행 */
+		if (!(ticks % 4)) 
+		{
+			/* 전체 스레드의 우선순위 재 계산 */
+			mlfqs_recalc_priority();
+
+			/* 100 틱 = 1초 : 1초마다 load_avg 업데이트*/
+			if (!(ticks % TIMER_FREQ)) 
+			{
+				mlfqs_load_avg();
+				/* 모든 스레드의 recent_cpu값 재계산 */
+				mlfqs_recalc_recent_cpu();
+			}
+		}
+    }
+
+	/* Alarm Clock 기능 */
+	if (get_next_tick_to_awake() <= ticks)
+	{
+	thread_awake(ticks);
 	}
-	thread_tick (); // 현재 실행 중인 스레드 관리
 }
 
 /* Returns true if LOOPS iterations waits for more than one timer
