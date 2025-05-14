@@ -71,7 +71,7 @@ sema_down (struct semaphore *sema) {
 	while (sema->value == 0) {
 		// list_push_back (&sema->waiters, &thread_current ()->elem);
 		list_insert_ordered(&sema->waiters, &thread_current()->elem, 
-                           &cmp_priority, NULL);
+                        cmp_priority, NULL);
 		thread_block ();
 	}
 	sema->value--;
@@ -193,23 +193,26 @@ lock_init (struct lock *lock) {
    we need to sleep. */
 void
 lock_acquire (struct lock *lock) {
-	struct thread *curr = thread_current();
-
 	ASSERT (lock != NULL);
 	ASSERT (!intr_context ());
 	ASSERT (!lock_held_by_current_thread (lock));
 
 	struct thread *t = thread_current();
-	if (lock->holder != NULL){ // 이미 락이 점유된 경우
-		t->wait_on_lock = lock;
-		// 우선순위 순으로 정렬하여 삽입
-		list_push_back(&lock->holder->donations, &t->donations_elem);
-		donation_priority();
-	}
+	// MLFQ 모드가 아닐 때만 우선순위 기부 로직 실행
+    if (!thread_mlfqs && lock->holder != NULL) {
+        t->wait_on_lock = lock;
+        list_push_back(&lock->holder->donations, &t->donations_elem);
+        donation_priority();
+    }
 
 	sema_down (&lock->semaphore);
 	lock->holder = t;
-    t->wait_on_lock = NULL;
+
+	 // MLFQ 모드가 아닐 때만 wait_on_lock 초기화
+	 // MLFQ 는 우선순위 기부가 일어나지 않는다.
+	 if (!thread_mlfqs) {
+        t->wait_on_lock = NULL;
+    }
 }
 
 /* Tries to acquires LOCK and returns true if successful or false
@@ -244,11 +247,13 @@ lock_release (struct lock *lock) {
 
 	lock->holder = NULL;
 
-	// 우선순위 기부 반환: donations 리스트에서 해당 락을 기다리던 스레드 제거
-	remove_with_lock(lock);
-
-	refresh_priority();
-
+	// MLFQ 모드가 아닐 때만 우선순위 기부 반환 로직 실행
+	// MLFQ는 우선순위 기부가 일어나지 않는다.
+	if (!thread_mlfqs) {
+		remove_with_lock(lock);
+		refresh_priority();
+	}
+	
 	sema_up (&lock->semaphore);
 }
 
@@ -331,7 +336,7 @@ cond_signal (struct condition *cond, struct lock *lock UNUSED) {
 
 	if (!list_empty (&cond->waiters))
 		/* 세마포어의 watier list내에 스레드들의 우선순위에 따라 정렬한다. */	
-	    list_sort(&cond->waiters, cmp_sem_priority, NULL);
+	   list_sort(&cond->waiters, cmp_sem_priority, NULL);
 		sema_up (&list_entry (list_pop_front (&cond->waiters),
 					struct semaphore_elem, elem)->semaphore);
 }
