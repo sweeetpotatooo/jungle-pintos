@@ -772,20 +772,25 @@ void cmp_nowNfirst (void){
         thread_yield();
 }
 
-void donation_priority(void) {
-	struct thread *t = thread_current();
-	int priority = t->priority;
-    int depth = 0;
- 
-	for (int depth = 0; depth < 8; depth++) 
-	{
+void donation_priority(void){
+    struct thread *t = thread_current();
+    int priority = t->priority;
+    int depth;
+
+    for (depth = 0; depth < 8; depth++) {
         if (t->wait_on_lock == NULL)
             break;
-        t = t->wait_on_lock->holder;
-        t->priority = priority;
+
+        struct thread *holder = t->wait_on_lock->holder;
+        if (holder == NULL)
+            break;
+
+        if (holder->priority < priority)
+            holder->priority = priority;
+
+        t = holder;
     }
 }
-
 
 bool list_contains(struct list *list, struct list_elem *elem) {
     struct list_elem *e;
