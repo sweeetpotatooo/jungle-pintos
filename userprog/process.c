@@ -186,12 +186,6 @@ process_exec (void *f_name) {
 	/* We first kill the current context */
 	process_cleanup ();
 
-	//여기서 파싱
-	char *token, *save_ptr;
-	
-
-
-
 	/* And then load the binary */
 	success = load (buffer[0], &_if);
 
