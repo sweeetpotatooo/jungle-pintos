@@ -199,6 +199,8 @@ process_exec (void *f_name) {
 	_if.R.rdi = count;
 	_if.R.rsi = _if.rsp + 8;
 
+
+
 	/* If load failed, quit. */
 	palloc_free_page (file_name);
 	if (!success)
