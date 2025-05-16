@@ -43,8 +43,10 @@ syscall_handler (struct intr_frame *f UNUSED) {
 	switch (f->R.rax)
 	{
 	case SYS_HALT:
+			halt(); // 핀토스 종료
 		break;
 	case SYS_EXIT:
+			exit(f->R.rdi);	// 프로세스 종료
 		break;
 	case SYS_FORK:
 		break;
@@ -77,8 +79,19 @@ syscall_handler (struct intr_frame *f UNUSED) {
 
 }
 
+void halt(void) {
+	power_off();
+}
 
-static int write (int fd, const void *buffer, unsigned size) {
+void exit(int status){
+		struct thread *cur = thread_current();
+    cur->exit_status = status;
+
+	printf("%s: exit(%d)\n", thread_name(), status); 
+	thread_exit();	
+}
+
+int write (int fd, const void *buffer, unsigned size) {
   // fd가 1이면 표준 출력
   if (fd == 1) {
     // putbuf: 커널 콘솔에 buffer의 내용을 size만큼 출력
@@ -88,5 +101,3 @@ static int write (int fd, const void *buffer, unsigned size) {
 
   return -1;
 }
-
-
