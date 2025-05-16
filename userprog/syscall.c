@@ -40,7 +40,64 @@ syscall_init (void) {
 /* The main system call interface */
 void
 syscall_handler (struct intr_frame *f UNUSED) {
-	// TODO: Your implementation goes here.
-	printf ("system call!\n");
-	thread_exit ();
+	switch (f->R.rax)
+	{
+	case SYS_HALT:
+			halt(); // 핀토스 종료
+		break;
+	case SYS_EXIT:
+			exit(f->R.rdi);	// 프로세스 종료
+		break;
+	case SYS_FORK:
+		break;
+	case SYS_EXEC:
+		break;
+	case SYS_CREATE:
+		break;
+	case SYS_REMOVE:
+		break;
+	case SYS_OPEN:
+		break;
+	case SYS_FILESIZE:
+		break;
+	case SYS_READ:
+		break;
+	case SYS_WRITE:
+			f->R.rax = write(f->R.rdi, f->R.rsi, f->R.rdx);
+		break;
+	case SYS_SEEK:
+		break;
+	case SYS_TELL:
+		break;
+	case SYS_CLOSE:
+		break;
+	default:
+		printf ("system call!\n");
+		thread_exit ();
+		break;
+	}
+
+}
+
+void halt(void) {
+	power_off();
+}
+
+void exit(int status){
+		struct thread *cur = thread_current();
+    cur->exit_status = status;
+
+	printf("%s: exit(%d)\n", thread_name(), status); 
+	thread_exit();	
+}
+
+int write (int fd, const void *buffer, unsigned size) {
+  // fd가 1이면 표준 출력
+  if (fd == 1) {
+    // putbuf: 커널 콘솔에 buffer의 내용을 size만큼 출력
+    putbuf(buffer, size);
+    return size;  // 출력한 바이트 수 반환
+  }
+
+  return -1;
 }
