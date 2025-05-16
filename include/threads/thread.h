@@ -98,6 +98,8 @@ struct thread {
 	int priority;                       /* Priority. */
 	int64_t weakeup_tick;				/* wake up time (깨어나야 할 시간) */
 
+int exit_status;
+
 	/* Shared between thread.c and synch.c. */
 	struct list_elem elem;              /* List element. */
 
