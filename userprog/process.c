@@ -202,7 +202,7 @@ process_exec (void *f_name) {
 		_if.R.rsi = (char *)_if.rsp + 8;
 
 		// 스택에 값을 입력하기 위해서 는 오른쪽에서 왼쪽으로 이동 (LIFO)
-		hex_dump(_if.rsp, _if.rsp, USER_STACK - (uint64_t)_if.rsp, true);
+		// hex_dump(_if.rsp, _if.rsp, USER_STACK - (uint64_t)_if.rsp, true);
 	}
 
 	/* If load failed, quit. */
