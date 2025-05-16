@@ -12,7 +12,6 @@
 #include "filesys/filesys.h"
 #include "threads/flags.h"
 #include "threads/init.h"
-#include "threads/init.c"
 #include "threads/interrupt.h"
 #include "threads/palloc.h"
 #include "threads/thread.h"
@@ -239,7 +238,6 @@ void set_stack_data (char **parse_data, int count, void **rsp){
 	**(char **)rsp = 0;
 }
 
-
 /* Waits for thread TID to die and returns its exit status.  If
  * it was terminated by the kernel (i.e. killed due to an
  * exception), returns -1.  If TID is invalid or if it was not a
@@ -250,7 +248,7 @@ void set_stack_data (char **parse_data, int count, void **rsp){
  * 이 함수는 문제 2-2에서 구현될 예정입니다. 현재는 아무 동작도 하지 않습니다.
  */
 int
-process_wait (tid_t child_tid UNUSED) {
+process_wait (tid_t child_tid UNUSED) {	// 자식 프로세스, 종료 시 exit status(자식) 반환
 	/* XXX: Hint) The pintos exit if process_wait (initd), we recommend you
 	 * XXX:       to add infinite loop here before
 	 * XXX:       implementing the process_wait. */
@@ -259,7 +257,7 @@ process_wait (tid_t child_tid UNUSED) {
 	}
 
 	// while (1) {	
-	// 	// 0. 커널에 의해 종료됨
+	// 	// 0. 커널에 의해 종료됨 + 종료시 자식 exit status 반환
 
 	// 	// 1. TID가 유효하지 않음
 	// 	if (!run_actions(child_tid)) {
@@ -271,7 +269,6 @@ process_wait (tid_t child_tid UNUSED) {
 	// 	// 3. 해당 TID에 대해 process_wait()이 이미 성공적으로 호출됨
 
 	// }
->>>>>>> upstream/develop
 	return -1;
 }
 
