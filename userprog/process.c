@@ -17,6 +17,8 @@
 #include "threads/thread.h"
 #include "threads/mmu.h"
 #include "threads/vaddr.h"
+#include "lib/string.h"
+#include "lib/stdio.h"
 #include "intrinsic.h"
 #ifdef VM
 #include "vm/vm.h"
@@ -26,6 +28,8 @@ static void process_cleanup (void);
 static bool load (const char *file_name, struct intr_frame *if_);
 static void initd (void *f_name);
 static void __do_fork (void *);
+
+void set_stack_data (char **parse_data, int count, void **rsp);
 
 /* General process initializer for initd and other process. */
 static void
@@ -162,8 +166,11 @@ error:
  * Returns -1 on fail. */
 int
 process_exec (void *f_name) {
+	char *buffer[64];
 	char *file_name = f_name;
+	char *token, *save_ptr;
 	bool success;
+	int count = 0;
 
 	/* We cannot use the intr_frame in the thread structure.
 	 * This is because when current thread rescheduled,
@@ -173,11 +180,22 @@ process_exec (void *f_name) {
 	_if.cs = SEL_UCSEG;
 	_if.eflags = FLAG_IF | FLAG_MBS;
 
+	for (token = strtok_r(file_name, " ", &save_ptr); token != NULL; token = strtok_r(NULL, " ", &save_ptr)){
+		buffer[count++] = token;
+	}
 	/* We first kill the current context */
 	process_cleanup ();
 
 	/* And then load the binary */
-	success = load (file_name, &_if);
+	success = load (buffer[0], &_if);
+
+	/* set up stack */
+	if (success){
+
+		set_stack_data(buffer, count, &_if.rsp);
+		// 스택에 값을 입력하기 위해서 는 오른쪽에서 왼쪽으로 이동 (LIFO)
+		hex_dump(_if.rsp, _if.rsp, USER_STACK - (uint64_t)_if.rsp, true);
+	}
 
 	/* If load failed, quit. */
 	palloc_free_page (file_name);
@@ -187,6 +205,11 @@ process_exec (void *f_name) {
 	/* Start switched process. */
 	do_iret (&_if);
 	NOT_REACHED ();
+}
+
+
+void set_stack_data (char **parse_data, int count, void **rsp){
+	printf("test\n");
 }
 
 
@@ -204,6 +227,9 @@ process_wait (tid_t child_tid UNUSED) {
 	/* XXX: Hint) The pintos exit if process_wait (initd), we recommend you
 	 * XXX:       to add infinite loop here before
 	 * XXX:       implementing the process_wait. */
+	for (int i = 0; i < 100000000; i++){
+		int data = 1;
+	}
 	return -1;
 }
 

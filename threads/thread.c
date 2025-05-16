@@ -768,7 +768,7 @@ void cmp_nowNfirst (void){
  
     struct thread *th = list_entry(list_front(&ready_list), struct thread, elem);
  
-    if (thread_get_priority() < th->priority)
+    if (!intr_context() && thread_get_priority() < th->priority)
         thread_yield();
 }
 
