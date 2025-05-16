@@ -193,21 +193,23 @@ thread_print_stats (void) {
 			idle_ticks, kernel_ticks, user_ticks);
 }
 
-/* Creates a new kernel thread named NAME with the given initial
-   PRIORITY, which executes FUNCTION passing AUX as the argument,
-   and adds it to the ready queue.  Returns the thread identifier
-   for the new thread, or TID_ERROR if creation fails.
+/* NAME이라는 이름과 주어진 PRIORITY(우선순위)를 가진 새로운 커널 스레드를 생성합니다.
+   이 스레드는 FUNCTION을 실행하며, AUX를 인자로 전달합니다.
+   생성된 스레드는 준비 큐(ready queue)에 추가됩니다.
+   스레드 생성에 성공하면 새 스레드의 ID(TID)를 반환하고,
+   실패하면 TID_ERROR를 반환합니다.
 
-   If thread_start() has been called, then the new thread may be
-   scheduled before thread_create() returns.  It could even exit
-   before thread_create() returns.  Contrariwise, the original
-   thread may run for any amount of time before the new thread is
-   scheduled.  Use a semaphore or some other form of
-   synchronization if you need to ensure ordering.
+   만약 thread_start()가 이미 호출된 상태라면, 새 스레드는
+   thread_create()가 반환되기 전에 스케줄될 수 있습니다.
+   심지어 thread_create()가 반환되기도 전에 종료될 수 있습니다.
+   반대로, 원래의 스레드가 새로운 스레드보다 훨씬 더 오래 실행될 수도 있습니다.
+   실행 순서를 보장해야 할 필요가 있다면 세마포어(semaphore) 등의
+   동기화 기법을 사용해야 합니다.
 
-   The code provided sets the new thread's `priority' member to
-   PRIORITY, but no actual priority scheduling is implemented.
-   Priority scheduling is the goal of Problem 1-3. */
+   현재 제공된 코드에서는 새 스레드의 `priority` 멤버에
+   PRIORITY 값을 설정해 주지만, 실제로는 우선순위 스케줄링이 구현되어 있지 않습니다.
+   우선순위 스케줄링은 문제 1-3(Problem 1-3)의 목표입니다.
+ */
 tid_t
 thread_create (const char *name, int priority,
 		thread_func *function, void *aux) {
@@ -223,7 +225,7 @@ thread_create (const char *name, int priority,
 
 	/* Initialize thread. */
 	init_thread (t, name, priority);
-	tid = t->tid = allocate_tid ();
+	tid = t->tid = allocate_tid ();	// tid 할당
 
 	/* Call the kernel_thread if it scheduled.
 	 * Note) rdi is 1st argument, and rsi is 2nd argument. */

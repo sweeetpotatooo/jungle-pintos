@@ -12,6 +12,7 @@
 #include "filesys/filesys.h"
 #include "threads/flags.h"
 #include "threads/init.h"
+#include "threads/init.c"
 #include "threads/interrupt.h"
 #include "threads/palloc.h"
 #include "threads/thread.h"
@@ -51,7 +52,7 @@ process_create_initd (const char *file_name) {
 	strlcpy (fn_copy, file_name, PGSIZE);
 
 	/* Create a new thread to execute FILE_NAME. */
-	tid = thread_create (file_name, PRI_DEFAULT, initd, fn_copy);
+	tid = thread_create (file_name, PRI_DEFAULT, initd, fn_copy);	// initd를 타고 들어가면
 	if (tid == TID_ERROR)
 		palloc_free_page (fn_copy);
 	return tid;
@@ -64,6 +65,7 @@ initd (void *f_name) {
 	supplemental_page_table_init (&thread_current ()->spt);
 #endif
 
+	// 프로세스 실행
 	process_init ();
 
 	if (process_exec (f_name) < 0)
@@ -190,20 +192,35 @@ process_exec (void *f_name) {
 }
 
 
-/* Waits for thread TID to die and returns its exit status.  If
- * it was terminated by the kernel (i.e. killed due to an
- * exception), returns -1.  If TID is invalid or if it was not a
- * child of the calling process, or if process_wait() has already
- * been successfully called for the given TID, returns -1
- * immediately, without waiting.
+/* 스레드 TID가 종료될 때까지 기다렸다가 해당 스레드의 종료 상태(exit status)를 반환합니다.
+ * 만약 커널에 의해 종료된 경우(예: 예외로 인해 강제 종료되었을 경우), -1을 반환합니다.
+ * TID가 유효하지 않거나 호출한 프로세스의 자식 프로세스가 아닌 경우,
+ * 또는 해당 TID에 대해 process_wait()이 이미 한 번 성공적으로 호출된 경우에는
+ * 기다리지 않고 즉시 -1을 반환합니다.
  *
- * This function will be implemented in problem 2-2.  For now, it
- * does nothing. */
+ * 이 함수는 문제 2-2에서 구현될 예정입니다. 현재는 아무 동작도 하지 않습니다.
+ */
 int
 process_wait (tid_t child_tid UNUSED) {
-	/* XXX: Hint) The pintos exit if process_wait (initd), we recommend you
-	 * XXX:       to add infinite loop here before
-	 * XXX:       implementing the process_wait. */
+	/* XXX: 힌트) Pintos는 process_wait(initd)가 호출되면 종료되기 때문에,
+	 * XXX:        process_wait를 구현하기 전에 이 부분에 무한 루프를 추가하는 것을 권장합니다.
+	 * for문으로 시간 길~게 잡기
+	 */
+
+	// while (1) {	
+	// 	// 0. 커널에 의해 종료됨
+
+	// 	// 1. TID가 유효하지 않음
+	// 	if (!run_actions(child_tid)) {
+	// 		return -1;
+	// 	}
+
+	// 	// 2. 호출한 프로세스의 자식 프로세스가 아님
+
+	// 	// 3. 해당 TID에 대해 process_wait()이 이미 성공적으로 호출됨
+
+	// }
+
 	return -1;
 }
 
