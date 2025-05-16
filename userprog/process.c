@@ -176,8 +176,16 @@ process_exec (void *f_name) {
 	/* We first kill the current context */
 	process_cleanup ();
 
+	//여기서 파싱
+	char *token, *save_ptr;
+	
+
+
+
 	/* And then load the binary */
 	success = load (file_name, &_if);
+
+
 
 	/* If load failed, quit. */
 	palloc_free_page (file_name);
