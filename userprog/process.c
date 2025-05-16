@@ -196,6 +196,8 @@ process_exec (void *f_name) {
 		// 스택에 값을 입력하기 위해서 는 오른쪽에서 왼쪽으로 이동 (LIFO)
 		hex_dump(_if.rsp, _if.rsp, USER_STACK - (uint64_t)_if.rsp, true);
 	}
+	_if.R.rdi = count;
+	_if.R.rsi = _if.rsp + 8;
 
 	/* If load failed, quit. */
 	palloc_free_page (file_name);
@@ -209,7 +211,30 @@ process_exec (void *f_name) {
 
 
 void set_stack_data (char **parse_data, int count, void **rsp){
-	printf("test\n");
+	for (int i = count-1; i >= 0; i--){
+		
+		for (int j = strlen(parse_data[i]); j >= 0; j--){
+			(*rsp)--;
+			**(char **)rsp = parse_data[i][j];
+		}
+		parse_data[i] = *(char **)rsp;
+	}
+	int padding = (*(int *)rsp) % 8;
+	for (int i = 0; i < padding; i++){
+		(*rsp)--;
+		**(char **)rsp = 0;
+	}
+
+	(*rsp) -= 8;
+	**(char **)rsp = 0;
+
+	for(int i = count -1; i >= 0; i--){
+		(*rsp) -= 8;
+		**(char **)rsp = parse_data[i];
+	}
+
+	(*rsp) -= 8;
+	**(char **)rsp = 0;
 }
 
 
