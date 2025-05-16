@@ -18,6 +18,8 @@
 #include "threads/thread.h"
 #include "threads/mmu.h"
 #include "threads/vaddr.h"
+#include "lib/string.h"
+#include "lib/stdio.h"
 #include "intrinsic.h"
 #ifdef VM
 #include "vm/vm.h"
@@ -27,6 +29,8 @@ static void process_cleanup (void);
 static bool load (const char *file_name, struct intr_frame *if_);
 static void initd (void *f_name);
 static void __do_fork (void *);
+
+void set_stack_data (char **parse_data, int count, void **rsp);
 
 /* General process initializer for initd and other process. */
 static void
@@ -164,8 +168,11 @@ error:
  * Returns -1 on fail. */
 int
 process_exec (void *f_name) {
+	char *buffer[64];
 	char *file_name = f_name;
+	char *token, *save_ptr;
 	bool success;
+	int count = 0;
 
 	/* We cannot use the intr_frame in the thread structure.
 	 * This is because when current thread rescheduled,
@@ -175,11 +182,24 @@ process_exec (void *f_name) {
 	_if.cs = SEL_UCSEG;
 	_if.eflags = FLAG_IF | FLAG_MBS;
 
+	for (token = strtok_r(file_name, " ", &save_ptr); token != NULL; token = strtok_r(NULL, " ", &save_ptr)){
+		buffer[count++] = token;
+	}
 	/* We first kill the current context */
 	process_cleanup ();
 
 	/* And then load the binary */
-	success = load (file_name, &_if);
+	success = load (buffer[0], &_if);
+
+	/* set up stack */
+	if (success){
+
+		set_stack_data(buffer, count, &_if.rsp);
+		// 스택에 값을 입력하기 위해서 는 오른쪽에서 왼쪽으로 이동 (LIFO)
+		hex_dump(_if.rsp, _if.rsp, USER_STACK - (uint64_t)_if.rsp, true);
+	}
+	_if.R.rdi = count;
+	_if.R.rsi = _if.rsp + 8;
 
 	/* If load failed, quit. */
 	palloc_free_page (file_name);
@@ -192,20 +212,51 @@ process_exec (void *f_name) {
 }
 
 
-/* 스레드 TID가 종료될 때까지 기다렸다가 해당 스레드의 종료 상태(exit status)를 반환합니다.
- * 만약 커널에 의해 종료된 경우(예: 예외로 인해 강제 종료되었을 경우), -1을 반환합니다.
- * TID가 유효하지 않거나 호출한 프로세스의 자식 프로세스가 아닌 경우,
- * 또는 해당 TID에 대해 process_wait()이 이미 한 번 성공적으로 호출된 경우에는
- * 기다리지 않고 즉시 -1을 반환합니다.
+void set_stack_data (char **parse_data, int count, void **rsp){
+	for (int i = count-1; i >= 0; i--){
+		
+		for (int j = strlen(parse_data[i]); j >= 0; j--){
+			(*rsp)--;
+			**(char **)rsp = parse_data[i][j];
+		}
+		parse_data[i] = *(char **)rsp;
+	}
+	int padding = (*(int *)rsp) % 8;
+	for (int i = 0; i < padding; i++){
+		(*rsp)--;
+		**(char **)rsp = 0;
+	}
+
+	(*rsp) -= 8;
+	**(char **)rsp = 0;
+
+	for(int i = count -1; i >= 0; i--){
+		(*rsp) -= 8;
+		**(char **)rsp = parse_data[i];
+	}
+
+	(*rsp) -= 8;
+	**(char **)rsp = 0;
+}
+
+
+/* Waits for thread TID to die and returns its exit status.  If
+ * it was terminated by the kernel (i.e. killed due to an
+ * exception), returns -1.  If TID is invalid or if it was not a
+ * child of the calling process, or if process_wait() has already
+ * been successfully called for the given TID, returns -1
+ * immediately, without waiting.
  *
  * 이 함수는 문제 2-2에서 구현될 예정입니다. 현재는 아무 동작도 하지 않습니다.
  */
 int
 process_wait (tid_t child_tid UNUSED) {
-	/* XXX: 힌트) Pintos는 process_wait(initd)가 호출되면 종료되기 때문에,
-	 * XXX:        process_wait를 구현하기 전에 이 부분에 무한 루프를 추가하는 것을 권장합니다.
-	 * for문으로 시간 길~게 잡기
-	 */
+	/* XXX: Hint) The pintos exit if process_wait (initd), we recommend you
+	 * XXX:       to add infinite loop here before
+	 * XXX:       implementing the process_wait. */
+	for (int i = 0; i < 100000000; i++){
+		int data = 1;
+	}
 
 	// while (1) {	
 	// 	// 0. 커널에 의해 종료됨
@@ -220,7 +271,7 @@ process_wait (tid_t child_tid UNUSED) {
 	// 	// 3. 해당 TID에 대해 process_wait()이 이미 성공적으로 호출됨
 
 	// }
-
+>>>>>>> upstream/develop
 	return -1;
 }
 
