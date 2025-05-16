@@ -54,6 +54,11 @@ process_create_initd (const char *file_name) {
 		return TID_ERROR;
 	strlcpy (fn_copy, file_name, PGSIZE);
 
+	 // Argument Passing ~
+    char *save_ptr;
+    strtok_r(file_name, " ", &save_ptr);
+    // ~ Argument Passing
+
 	/* Create a new thread to execute FILE_NAME. */
 	tid = thread_create (file_name, PRI_DEFAULT, initd, fn_copy);
 	if (tid == TID_ERROR)
@@ -187,19 +192,18 @@ process_exec (void *f_name) {
 	process_cleanup ();
 
 	/* And then load the binary */
-	success = load (buffer[0], &_if);
+	success = load (file_name, &_if);
 
 	/* set up stack */
 	if (success){
 
 		set_stack_data(buffer, count, &_if.rsp);
+		_if.R.rdi = count;
+		_if.R.rsi = (char *)_if.rsp + 8;
+
 		// 스택에 값을 입력하기 위해서 는 오른쪽에서 왼쪽으로 이동 (LIFO)
 		hex_dump(_if.rsp, _if.rsp, USER_STACK - (uint64_t)_if.rsp, true);
 	}
-	_if.R.rdi = count;
-	_if.R.rsi = _if.rsp + 8;
-
-
 
 	/* If load failed, quit. */
 	palloc_free_page (file_name);
@@ -228,15 +232,15 @@ void set_stack_data (char **parse_data, int count, void **rsp){
 	}
 
 	(*rsp) -= 8;
-	**(char **)rsp = 0;
+	**(char ***)rsp = 0;
 
 	for(int i = count -1; i >= 0; i--){
 		(*rsp) -= 8;
-		**(char **)rsp = parse_data[i];
+		**(char ***)rsp = parse_data[i];
 	}
 
 	(*rsp) -= 8;
-	**(char **)rsp = 0;
+	**(char ***)rsp = 0;
 }
 
 

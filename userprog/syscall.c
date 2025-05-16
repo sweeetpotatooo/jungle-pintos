@@ -78,7 +78,7 @@ syscall_handler (struct intr_frame *f UNUSED) {
 }
 
 
-static int write (int fd, const void *buffer, unsigned size) {
+int write (int fd, const void *buffer, unsigned size) {
   // fd가 1이면 표준 출력
   if (fd == 1) {
     // putbuf: 커널 콘솔에 buffer의 내용을 size만큼 출력
