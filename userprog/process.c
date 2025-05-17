@@ -261,6 +261,18 @@ process_wait (tid_t child_tid UNUSED) {
 	for (int i = 0; i < 100000000; i++){
 		int data = 1;
 	}
+	for (int i = 0; i < 100000000; i++){
+		int data = 1;
+	}
+	for (int i = 0; i < 100000000; i++){
+		int data = 1;
+	}
+	for (int i = 0; i < 100000000; i++){
+		int data = 1;
+	}
+	for (int i = 0; i < 100000000; i++){
+		int data = 1;
+	}
 	return -1;
 }
 
