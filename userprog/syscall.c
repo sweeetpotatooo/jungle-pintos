@@ -3,13 +3,17 @@
 #include <syscall-nr.h>
 #include "threads/interrupt.h"
 #include "threads/thread.h"
+#include "threads/synch.h"
 #include "threads/loader.h"
 #include "userprog/gdt.h"
 #include "threads/flags.h"
+#include "filesys/filesys.h"
+#include "threads/synch.h"
 #include "intrinsic.h"
 
 void syscall_entry (void);
 void syscall_handler (struct intr_frame *);
+bool create (const char *file, unsigned initial_size);
 
 /* System call.
  *
@@ -23,6 +27,16 @@ void syscall_handler (struct intr_frame *);
 #define MSR_STAR 0xc0000081         /* Segment selector msr */
 #define MSR_LSTAR 0xc0000082        /* Long mode SYSCALL target */
 #define MSR_SYSCALL_MASK 0xc0000084 /* Mask for the eflags */
+
+void check_address(void *addr)
+{
+    // kernel VM 못가게, 할당된 page가 존재하도록(빈공간접근 못하게)
+    struct thread *cur = thread_current();
+    if (is_kernel_vaddr(addr) || pml4_get_page(cur->pml4, addr) == NULL)
+    {
+        exit(-1);
+    }
+}
 
 void
 syscall_init (void) {
@@ -43,16 +57,17 @@ syscall_handler (struct intr_frame *f UNUSED) {
 	switch (f->R.rax)
 	{
 	case SYS_HALT:
-			halt(); // 핀토스 종료
+		halt(); // 핀토스 종료
 		break;
 	case SYS_EXIT:
-			exit(f->R.rdi);	// 프로세스 종료
+		exit(f->R.rdi);	// 프로세스 종료
 		break;
 	case SYS_FORK:
 		break;
 	case SYS_EXEC:
 		break;
 	case SYS_CREATE:
+		f->R.rax = create(f->R.rdi, f->R.rsi);
 		break;
 	case SYS_REMOVE:
 		break;
@@ -79,6 +94,7 @@ syscall_handler (struct intr_frame *f UNUSED) {
 
 }
 
+
 void halt(void) {
 	power_off();
 }
@@ -100,4 +116,10 @@ int write (int fd, const void *buffer, unsigned size) {
   }
 
   return -1;
+}
+
+
+bool create (const char *file, unsigned initial_size){
+	check_address(file);
+    return filesys_create(file, initial_size);
 }
