@@ -261,20 +261,6 @@ process_wait (tid_t child_tid UNUSED) {	// 자식 프로세스, 종료 시 exit 
 	for (int i = 0; i < 100000000; i++){
 		int data = 1;
 	}
-
-	// while (1) {	
-	// 	// 0. 커널에 의해 종료됨 + 종료시 자식 exit status 반환
-
-	// 	// 1. TID가 유효하지 않음
-	// 	if (!run_actions(child_tid)) {
-	// 		return -1;
-	// 	}
-
-	// 	// 2. 호출한 프로세스의 자식 프로세스가 아님
-
-	// 	// 3. 해당 TID에 대해 process_wait()이 이미 성공적으로 호출됨
-
-	// }
 	return -1;
 }
 
