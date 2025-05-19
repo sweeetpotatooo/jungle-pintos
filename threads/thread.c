@@ -525,13 +525,6 @@ init_thread (struct thread *t, const char *name, int priority) {
 
     /* 스택 오버플로우 검출용 매직 넘버 설정 */
     t->magic = THREAD_MAGIC;
-	
-	/* 파일 디스크립터 */
-	for (int i = 0; i < MAX_FD_NUM; i++) {
-        t->fd_table[i] = NULL;
-    }
-    t->fdidx = 2;  // 0, 1은 stdin, stdout이 할당될 수 있음
-
 
     t->init_priority = t->priority;
 	/* MLFQ : nice, recent_cpu 초기화 */
@@ -971,3 +964,17 @@ int allocate_fd (struct file *file)
     // 발급된 fd 반환
     return desc->fd;
 }
+
+
+struct file *find_file_by_fd(int fd) {
+    struct thread *cur = thread_current();
+    struct list_elem *e;
+    for (e = list_begin(&cur->fd_list); e != list_end(&cur->fd_list); e = list_next(e)) {
+        struct file_descriptor *d =
+            list_entry(e, struct file_descriptor, fd_elem);
+        if (d->fd == fd)
+            return d->file_p;
+    }
+    return NULL;  // 모든 요소 검사 후에도 매칭이 없으면 NULL 반환
+}
+

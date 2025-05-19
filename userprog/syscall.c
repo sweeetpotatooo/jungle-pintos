@@ -17,7 +17,6 @@ void syscall_handler (struct intr_frame *);
 bool create (const char *file, unsigned initial_size);
 tid_t fork (const char *thread_name, struct intr_frame *f);
 bool remove (const char *file);
-struct file *find_file_by_fd(int fd);
 int filesize(int fd) ;
 void seek(int fd, unsigned position);
 unsigned tell(int fd);
@@ -84,7 +83,6 @@ syscall_handler (struct intr_frame *f UNUSED) {
 			f->R.rax = open(f->R.rdi);
 		break;
 	case SYS_FILESIZE:
-			f->R.rax = filesize(f->R.rdi);
 		break;
 	case SYS_READ:
 			f->R.rax = read(f->R.rdi, f->R.rsi, f->R.rdx);
@@ -181,22 +179,6 @@ int read(int fd, void *buffer, unsigned size){
 
 }
 
-// fd에 해당하는 file 포인터를 반환
-struct file *find_file_by_fd(int fd){
-    struct thread *cur = thread_current();  // 현재 스레드
-    struct list_elem *e;
-    // 파일 디스크럽터 리스트를 돌면서
-    for (e = list_begin(&cur -> fd_list); e != list_end(&cur -> fd_list); e = list_next(e)) {
-        struct file_descriptor *fdesc = list_entry(e, struct file_descriptor, fd_elem); // 현재 스레드의 구조체
-        // 현재 스레드의 FD 번호와 목표 FD 번호가 같으면
-        if (fdesc -> fd == fd) {
-            return fdesc -> file_p;    // 파일 포인터를 반환함
-        }
-    }
-
-	return NULL;
-}
-
 // 파일 디스크럽터를 사용하여 파일의 크기를 가져오는 함수
 int filesize(int fd) {
     struct file *file = find_file_by_fd(fd);	// 파일 포인터
@@ -212,11 +194,9 @@ int filesize(int fd) {
 void seek(int fd, unsigned position) {
 	struct file *file = find_file_by_fd(fd);	// 파일 포인터
 
-	if (file == NULL) {
-		return -1;
+	if (file != NULL) {
+		file_seek(file, position);
 	}
-
-	file_seek(file, position);
 }
 
 // fd에서 다음에 읽거나 쓸 바이트의 위치를 반환하는 함수
@@ -227,5 +207,5 @@ unsigned tell(int fd) {
 		return -1;
 	}
 
-	file_tell(file);
+	return file_tell(file);
 }
