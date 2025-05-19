@@ -14,6 +14,7 @@
 #include "threads/fixed_point.h" // MLFQ 부동소수점 계산을 위한 헤더
 #ifdef USERPROG
 #include "userprog/process.h"
+#include "filesys/file.h" 
 #endif
 
 /* Random value for struct thread's `magic' member.
@@ -481,15 +482,18 @@ kernel_thread (thread_func *function, void *aux) {
    NAME. */
 static void
 init_thread (struct thread *t, const char *name, int priority) {
-	ASSERT (t != NULL);
-	ASSERT (PRI_MIN <= priority && priority <= PRI_MAX);
-	ASSERT (name != NULL);
+    ASSERT (t != NULL);
+    ASSERT (PRI_MIN <= priority && priority <= PRI_MAX);
+    ASSERT (name != NULL);
 
-	memset (t, 0, sizeof *t);
-	t->status = THREAD_BLOCKED;
-	strlcpy (t->name, name, sizeof t->name);
-	t->tf.rsp = (uint64_t) t + PGSIZE - sizeof (void *);
-	/* MLFQ의 경우 우선순위를 별도로 계산한다. 또한 all_list에 추가한다. */
+    /* 구조체 전체를 0으로 초기화해야 이후 세팅한 값들이 덮어써지지 않습니다 */
+    memset (t, 0, sizeof *t);
+
+    t->status = THREAD_BLOCKED;
+    strlcpy (t->name, name, sizeof t->name);
+    t->tf.rsp = (uint64_t) t + PGSIZE - sizeof (void *);
+
+    /* MLFQ 사용 여부에 따라 우선순위 초기화 */
     if (thread_mlfqs) {
         mlfqs_priority(t);
         list_push_back(&all_list, &t->all_elem);
@@ -497,17 +501,25 @@ init_thread (struct thread *t, const char *name, int priority) {
         t->priority = priority;
     }
 
-	t->wait_on_lock = NULL;
+#ifdef USERPROG
+    /* 파일 디스크립터 관리용 필드 초기화
+       0=stdin, 1=stdout 2 =stderr 이므로 3부터 시작 */
+    t->last_created_fd = 3;
+    list_init(&t->fd_list);
+#endif
+
+    /* 우선순위 기부용 필드 초기화 */
+    t->wait_on_lock = NULL;
     list_init(&t->donations);
 
+    /* 스택 오버플로우 검출용 매직 넘버 설정 */
     t->magic = THREAD_MAGIC;
-
     t->init_priority = t->priority;
-	/* MLFQ : nice, recent_cpu 초기화 */
-	t->niceness = NICE_DEFAULT;
-    t->recent_cpu = RECENT_CPU_DEFAULT;
-}
 
+    /* MLFQ 관련 필드 초기화 */
+    t->niceness    = NICE_DEFAULT;
+    t->recent_cpu  = RECENT_CPU_DEFAULT;
+}
 /* Chooses and returns the next thread to be scheduled.  Should
    return a thread from the run queue, unless the run queue is
    empty.  (If the running thread can continue running, then it
@@ -916,4 +928,21 @@ mlfqs_increment (void)
 
 	/* recent_cpu 값 1증가 */
     thread_current()->recent_cpu = add_mixed(thread_current()->recent_cpu, 1);
+}
+
+int allocate_fd (struct file *file)
+{
+    // 파일 디스크립터 할당
+    struct file_descriptor *desc = malloc (sizeof *desc);
+    if (desc == NULL)
+      return -1;
+
+    // 현재 스레드의 fd_list 에 추가
+    struct thread *t = thread_current ();
+    desc->fd     = t->last_created_fd++;
+    desc->file_p = file;
+    list_push_back (&t->fd_list, &desc->fd_elem);
+
+    // 발급된 fd 반환
+    return desc->fd;
 }

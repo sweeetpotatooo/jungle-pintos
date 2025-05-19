@@ -8,7 +8,6 @@
 #include "userprog/gdt.h"
 #include "threads/flags.h"
 #include "filesys/filesys.h"
-#include "threads/synch.h"
 #include "intrinsic.h"
 
 void syscall_entry (void);
@@ -58,10 +57,10 @@ syscall_handler (struct intr_frame *f UNUSED) {
 	switch (f->R.rax)
 	{
 	case SYS_HALT:
-		halt(); // 핀토스 종료
+			halt(); // 핀토스 종료
 		break;
 	case SYS_EXIT:
-		exit(f->R.rdi);	// 프로세스 종료
+			exit(f->R.rdi);	// 프로세스 종료
 		break;
 	case SYS_FORK:
 		break;
@@ -74,6 +73,7 @@ syscall_handler (struct intr_frame *f UNUSED) {
 		f->R.rax = remove(f->R.rdi);
 		break;
 	case SYS_OPEN:
+			f->R.rax = open(f->R.rdi);
 		break;
 	case SYS_FILESIZE:
 		break;
@@ -120,7 +120,6 @@ int write (int fd, const void *buffer, unsigned size) {
   return -1;
 }
 
-
 bool create (const char *file, unsigned initial_size){
 	check_address(file);
     return filesys_create(file, initial_size);
@@ -129,4 +128,23 @@ bool create (const char *file, unsigned initial_size){
 bool remove (const char *file) {
 	check_address(file);
 	return filesys_remove(file);
+}
+
+int open (const char *file) {
+	check_address(file); // 주소 유효한지 체크
+	struct file *opened_file = filesys_open(file); // 파일 열기 시도, 열려고 하는 파일 정보 filesys_open()으로 받기
+	
+	// 제대로 파일 생성됐는지 체크
+	if (opened_file == NULL) {
+		return -1;
+	}
+	int fd = allocate_fd(opened_file); // 만들어진 파일 스레드 내 fdt 테이블에 추가
+
+	// 만약 파일을 열 수 없으면 -1
+	if (fd == -1) {
+		file_close(opened_file);
+	}
+
+	return fd;
+
 }
