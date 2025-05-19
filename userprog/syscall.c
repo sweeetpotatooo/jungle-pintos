@@ -11,11 +11,13 @@
 #include "intrinsic.h"
 #include "userprog/process.h"
 
+
 void syscall_entry (void);
 void syscall_handler (struct intr_frame *);
 bool create (const char *file, unsigned initial_size);
 tid_t fork (const char *thread_name, struct intr_frame *f);
 bool remove (const char *file);
+int filesize(int fd) ;
 
 /* System call.
  *
@@ -79,8 +81,10 @@ syscall_handler (struct intr_frame *f UNUSED) {
 			f->R.rax = open(f->R.rdi);
 		break;
 	case SYS_FILESIZE:
+				f->R.rax = filesize(f->R.rdi);
 		break;
 	case SYS_READ:
+			f->R.rax = read(f->R.rdi, f->R.rsi, f->R.rdx);
 		break;
 	case SYS_WRITE:
 			f->R.rax = write(f->R.rdi, f->R.rsi, f->R.rdx);
@@ -98,7 +102,6 @@ syscall_handler (struct intr_frame *f UNUSED) {
 	}
 
 }
-
 
 void halt(void) {
 	power_off();
@@ -152,4 +155,31 @@ int open (const char *file) {
 
 tid_t fork (const char *thread_name, struct intr_frame *f){
 	return process_fork(thread_name, f);
+}
+
+int read(int fd, void *buffer, unsigned size){
+// Read size bytes from the file open as fd into buffer.
+// Return the number of bytes actually read (0 at end of file), or -1 if fails.
+// If fd is 0, it reads from keyboard using input_getc(), otherwise reads from file using file_read() function.
+// 	uint8_t input_getc(void)
+// 	off_t file_read(struct file *file, void *buffer, off_t size)
+
+	check_address(buffer); // 유효주소 확인
+
+	struct file *f = find_file_by_fd(fd);  // fd값으로 파일 찾기
+	if (f == NULL)
+    return -1;
+
+	int bytes_read = file_read(f,buffer,size);
+	return bytes_read;
+
+
+}
+
+int filesize (int fd)
+{
+    struct file *file = find_file_by_fd(fd);
+    if (file == NULL)
+        return -1;                  /* 해당 fd가 없으면 에러 */
+    return file_length(file);       /* file_length()로 크기 반환 */
 }

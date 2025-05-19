@@ -159,67 +159,65 @@ duplicate_pte (uint64_t *pte, void *va, void *aux) {
 * 즉, process_fork의 두 번째 인수를 이 함수에 전달해야 합니다. */
 static void
 __do_fork (void *aux) {
-	struct intr_frame if_;
-	struct thread *parent = (struct thread *) aux;
-	struct thread *current = thread_current ();
-	/* TODO: 어떻게든 parent_if를 전달합니다. (즉, process_fork()의 if_) */
-	struct intr_frame *parent_if;
-	bool succ = true;
+    struct intr_frame if_;
+    struct thread *parent = (struct thread *) aux;
+    struct thread *current = thread_current ();
+    struct intr_frame *parent_if;  /* process_fork()에서 넘겨준 부모의 intr_frame */
+    bool succ = true;
 
-	/* 1. CPU 컨텍스트를 로컬 스택으로 읽습니다. */
-	memcpy (&if_, parent_if, sizeof (struct intr_frame));
-	if_.R.rax = 0;
+    /* CPU 컨텍스트 복사 */
+    memcpy (&if_, parent_if, sizeof (struct intr_frame));
+    if_.R.rax = 0;
 
-	/* 2. Duplicate PT */
-	current->pml4 = pml4_create();
-	if (current->pml4 == NULL)
-		goto error;
-
-	process_activate (current);
+    /* 새로운 페이지 테이블 생성 */
+    current->pml4 = pml4_create ();
+    if (current->pml4 == NULL)
+        goto error;
+    process_activate (current);
 #ifdef VM
-	supplemental_page_table_init (&current->spt);
-	if (!supplemental_page_table_copy (&current->spt, &parent->spt))
-		goto error;
+    supplemental_page_table_init (&current->spt);
+    if (!supplemental_page_table_copy (&current->spt, &parent->spt))
+        goto error;
 #else
-	if (!pml4_for_each (parent->pml4, duplicate_pte, parent))
-		goto error;
+    if (!pml4_for_each (parent->pml4, duplicate_pte, parent))
+        goto error;
 #endif
 
-	/* TODO: 코드를 여기에 입력하세요.
-	* TODO: 힌트) 파일 객체를 복제하려면 `file_duplicate`를 사용하세요.
-	* TODO: include/filesys/file.h에 있습니다. parent는 이 함수가 성공적으로 복제될 때까지 fork()에서 반환해서는 안 됩니다.
-	* TODO: parent의 리소스를 반환해야 합니다.*/
-	if (parent->fdidx == MAX_FD_NUM)
-        goto error;
+    /* fd_list 기반으로 파일 디스크립터 복제 */
+    list_init (&current->fd_list);
+    /* 부모가 할당했던 마지막 FD 값 그대로 가져오기 */
+    current->last_created_fd = parent->last_created_fd;
 
-	for (int i = 0; i < MAX_FD_NUM; i++) {
-		struct file * f = parent->fd_table[i];
-		if (f == NULL){
-			continue;
-		}
-		bool found = false;
-		if (!found){
-			struct file *new_file;
-			if (f > 2){
-				new_file = file_duplicate(f);
-			}
-			else {
-				new_file = f;
-			}
-			current->fd_table[i] = new_file;		
-		}
-	}
-	current->fdidx = parent->fdidx;
-	sema_up(&current->fork_sema);
-	/* 마지막으로 새로 만든 프로세스로 전환합니다. */
-	if (succ)
-		do_iret (&if_);
+    for (struct list_elem *e = list_begin (&parent->fd_list);
+         e != list_end (&parent->fd_list);
+         e = list_next (e)) {
+        struct file_descriptor *pd =
+            list_entry (e, struct file_descriptor, fd_elem);
+
+        /* 새 descriptor 생성 */
+        struct file_descriptor *cd = malloc (sizeof *cd);
+        if (!cd)
+            goto error;
+
+        cd->fd = pd->fd;
+        if (pd->fd > 2)
+            cd->file_p = file_duplicate (pd->file_p);
+        else
+            cd->file_p = pd->file_p;
+
+        list_push_back (&current->fd_list, &cd->fd_elem);
+    }
+
+    sema_up (&current->fork_sema);
+
+    if (succ)
+        do_iret (&if_);
+
 error:
-	current->exit_status = TID_ERROR;
-	sema_up(&current->fork_sema);
-	exit(TID_ERROR);
+    current->exit_status = TID_ERROR;
+    sema_up (&current->fork_sema);
+    exit (TID_ERROR);
 }
-
 /* Switch the current execution context to the f_name.
  * Returns -1 on fail. */
 int
