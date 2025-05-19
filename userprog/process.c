@@ -60,7 +60,7 @@ process_create_initd (const char *file_name) {
     // ~ Argument Passing
 
 	/* Create a new thread to execute FILE_NAME. */
-	tid = thread_create (file_name, PRI_DEFAULT, initd, fn_copy);
+	tid = thread_create (file_name, PRI_DEFAULT, initd, fn_copy);	// initd를 타고 들어가면
 	if (tid == TID_ERROR)
 		palloc_free_page (fn_copy);
 	return tid;
@@ -73,6 +73,7 @@ initd (void *f_name) {
 	supplemental_page_table_init (&thread_current ()->spt);
 #endif
 
+	// 프로세스 실행
 	process_init ();
 
 	if (process_exec (f_name) < 0)
@@ -243,7 +244,6 @@ void set_stack_data (char **parse_data, int count, void **rsp){
 	**(char ***)rsp = 0;
 }
 
-
 /* Waits for thread TID to die and returns its exit status.  If
  * it was terminated by the kernel (i.e. killed due to an
  * exception), returns -1.  If TID is invalid or if it was not a
@@ -251,10 +251,10 @@ void set_stack_data (char **parse_data, int count, void **rsp){
  * been successfully called for the given TID, returns -1
  * immediately, without waiting.
  *
- * This function will be implemented in problem 2-2.  For now, it
- * does nothing. */
+ * 이 함수는 문제 2-2에서 구현될 예정입니다. 현재는 아무 동작도 하지 않습니다.
+ */
 int
-process_wait (tid_t child_tid UNUSED) {
+process_wait (tid_t child_tid UNUSED) {	// 자식 프로세스, 종료 시 exit status(자식) 반환
 	/* XXX: Hint) The pintos exit if process_wait (initd), we recommend you
 	 * XXX:       to add infinite loop here before
 	 * XXX:       implementing the process_wait. */
@@ -273,6 +273,28 @@ process_wait (tid_t child_tid UNUSED) {
 	for (int i = 0; i < 100000000; i++){
 		int data = 1;
 	}
+	for (int i = 0; i < 100000000; i++){
+		int data = 1;
+	}
+	for (int i = 0; i < 100000000; i++){
+		int data = 1;
+	}
+	for (int i = 0; i < 100000000; i++){
+		int data = 1;
+	}
+	for (int i = 0; i < 100000000; i++){
+		int data = 1;
+	}
+	for (int i = 0; i < 100000000; i++){
+		int data = 1;
+	}
+	for (int i = 0; i < 100000000; i++){
+		int data = 1;
+	}
+	for (int i = 0; i < 100000000; i++){
+		int data = 1;
+	}
+
 	return -1;
 }
 
@@ -428,9 +450,10 @@ load (const char *file_name, struct intr_frame *if_) {
 	for (i = 0; i < ehdr.e_phnum; i++) {
 		struct Phdr phdr;
 
-		if (file_ofs < 0 || file_ofs > file_length (file))
+		off_t phdr_ofs = ehdr.e_phoff + i * sizeof(struct Phdr);
+		file_seek(file, phdr_ofs);
+		if (file_read(file, &phdr, sizeof phdr) != sizeof phdr)
 			goto done;
-		file_seek (file, file_ofs);
 
 		if (file_read (file, &phdr, sizeof phdr) != sizeof phdr)
 			goto done;
