@@ -17,7 +17,7 @@ void syscall_handler (struct intr_frame *);
 bool create (const char *file, unsigned initial_size);
 tid_t fork (const char *thread_name, struct intr_frame *f);
 bool remove (const char *file);
-int filesize(int fd) ;
+int filesize(int fd);
 
 /* System call.
  *
@@ -114,15 +114,38 @@ void exit(int status){
 	thread_exit();	
 }
 
-int write (int fd, const void *buffer, unsigned size) {
-  // fd가 1이면 표준 출력
-  if (fd == 1) {
-    // putbuf: 커널 콘솔에 buffer의 내용을 size만큼 출력
-    putbuf(buffer, size);
-    return size;  // 출력한 바이트 수 반환
-  }
+int write (int fd, const void *buffer, unsigned size)
+{
+// Writes size bytes from buffer to the open file fd.
+// Returns the number of bytes actually written.
+// If fd is 1, it writes to the console using putbuf(), otherwise write to the file using file_write() function.
+// 		void putbuf(const char *buffer, size_t n)
+// 		off_t file_write(struct file *file, const void *buffer, off_t size)
 
-  return -1;
+
+    /* 유저 버퍼 유효성 검사 */
+    if (buffer == NULL)
+        return -1;
+    check_address(buffer);
+    if (size > 0)
+        check_address ((const char *)buffer + size - 1);
+    /* stdout (fd == 1) 처리 */
+    if (fd == 1) {
+				// putbuf: 커널 콘솔에 buffer의 내용을 size만큼 출력
+        putbuf (buffer, size);
+        return size;
+    }
+    /* stdin (fd == 0) 쓰기 불가 */
+    if (fd == 0)
+        return -1;
+    /* 열린 파일 조회 */
+    struct file *f = find_file_by_fd(fd);
+    if (f == NULL)
+        return -1;
+
+    /* 실제 파일에 쓰기 */
+    off_t written = file_write (f, buffer, size);
+    return written;
 }
 
 bool create (const char *file, unsigned initial_size){
