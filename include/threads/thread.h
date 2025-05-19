@@ -5,6 +5,7 @@
 #include <list.h>
 #include <stdint.h>
 #include "threads/interrupt.h"
+#include "threads/synch.h"
 #include "filesys/file.h"   /* struct file 정의 */
 #ifdef VM
 #include "vm/vm.h"
@@ -28,6 +29,7 @@ enum thread_status {
 /* Thread identifier type.
    You can redefine this to whatever type you like. */
 typedef int tid_t;
+#define MAX_FD_NUM 128
 #define TID_ERROR ((tid_t) -1)          /* Error value for tid_t. */
 
 /* Thread priorities. */
@@ -105,7 +107,7 @@ struct thread {
     int priority;                       /* Priority. */
     int64_t weakeup_tick;               /* 깨어날 tick */
 
-    int exit_status;
+	int exit_status;
 
     /* Shared between thread.c and synch.c. */
     struct list_elem elem;              /* List element. */
@@ -126,6 +128,15 @@ struct thread {
     struct list fd_list;                /* file_descriptor 리스트 */
 
 #ifdef USERPROG
+	/* Owned by userprog/process.c. */
+	struct list child_list;
+	struct list_elem child_elem;
+	struct thread *parent;
+
+	bool already_waited;
+	struct intr_frame parent_if;
+	struct file *fd_table[MAX_FD_NUM];
+	int fdidx;
     /* Owned by userprog/process.c. */
     uint64_t *pml4;                     /* 페이지 맵 레벨 4 포인터 */
 #endif
@@ -133,6 +144,9 @@ struct thread {
 #ifdef VM
     struct supplemental_page_table spt; /* 가상 메모리 테이블 */
 #endif
+	struct semaphore wait_sema;
+	struct semaphore free_sema;
+	struct semaphore fork_sema;
 
     /* Owned by thread.c. */
     struct intr_frame tf;               /* 스위칭 정보 */

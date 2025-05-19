@@ -125,6 +125,7 @@ thread_init (void) {
 	list_init (&destruction_req);
 	list_init (&sleep_list);
 	list_init (&all_list); /* MLFQ all_list 초기화 */
+	
 
 	/* Set up a thread structure for the running thread. */
 	initial_thread = running_thread ();
@@ -221,6 +222,7 @@ thread_create (const char *name, int priority,
 	t = palloc_get_page (PAL_ZERO);
 	if (t == NULL)
 		return TID_ERROR;
+	struct thread *curr = thread_current();
 
 	/* Initialize thread. */
 	init_thread (t, name, priority);
@@ -236,7 +238,13 @@ thread_create (const char *name, int priority,
 	t->tf.ss = SEL_KDSEG;
 	t->tf.cs = SEL_KCSEG;
 	t->tf.eflags = FLAG_IF;
+	t->already_waited = false;
+	sema_init(&t->wait_sema, 0);
+	sema_init(&t->free_sema, 0);
+	sema_init(&t->fork_sema, 0);
+	t->parent = curr;
 
+	list_push_back(&curr->child_list, &t->child_elem);
 	/* Add to run queue. */
 	thread_unblock (t);
 	/* 현재와 가장 높은 우선순위 비교후 현재보다 우선순위가 높다면 양보 */
@@ -317,7 +325,7 @@ thread_tid (void) {
 void
 thread_exit (void) {
 	ASSERT (!intr_context ());
-
+	struct thread *curr = thread_current();
 #ifdef USERPROG
 	process_exit ();
 #endif
@@ -327,6 +335,7 @@ thread_exit (void) {
 	/* Just set our status to dying and schedule another process.
 	We will be destroyed during the call to schedule_tail(). */
 	intr_disable ();
+	sema_down(&curr->free_sema);
 	do_schedule (THREAD_DYING);
 	NOT_REACHED ();
 }
@@ -510,11 +519,27 @@ init_thread (struct thread *t, const char *name, int priority) {
 
     /* 우선순위 기부용 필드 초기화 */
     t->wait_on_lock = NULL;
+	t->exit_status = 0;
+	t->wait_on_lock = NULL;
     list_init(&t->donations);
 
     /* 스택 오버플로우 검출용 매직 넘버 설정 */
     t->magic = THREAD_MAGIC;
+	
+	/* 파일 디스크립터 */
+	for (int i = 0; i < MAX_FD_NUM; i++) {
+        t->fd_table[i] = NULL;
+    }
+    t->fdidx = 2;  // 0, 1은 stdin, stdout이 할당될 수 있음
+
+
     t->init_priority = t->priority;
+	/* MLFQ : nice, recent_cpu 초기화 */
+	t->niceness = NICE_DEFAULT;
+    t->recent_cpu = RECENT_CPU_DEFAULT;
+
+	/* 프로세스 관계 초기화 */
+	list_init(&t->child_list);
 
     /* MLFQ 관련 필드 초기화 */
     t->niceness    = NICE_DEFAULT;

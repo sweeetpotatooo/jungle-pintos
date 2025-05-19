@@ -9,10 +9,12 @@
 #include "threads/flags.h"
 #include "filesys/filesys.h"
 #include "intrinsic.h"
+#include "userprog/process.h"
 
 void syscall_entry (void);
 void syscall_handler (struct intr_frame *);
 bool create (const char *file, unsigned initial_size);
+tid_t fork (const char *thread_name, struct intr_frame *f);
 bool remove (const char *file);
 
 /* System call.
@@ -63,6 +65,7 @@ syscall_handler (struct intr_frame *f UNUSED) {
 			exit(f->R.rdi);	// 프로세스 종료
 		break;
 	case SYS_FORK:
+		f->R.rax = fork(f->R.rdi, f);
 		break;
 	case SYS_EXEC:
 		break;
@@ -102,9 +105,8 @@ void halt(void) {
 }
 
 void exit(int status){
-		struct thread *cur = thread_current();
+	struct thread *cur = thread_current();
     cur->exit_status = status;
-
 	printf("%s: exit(%d)\n", thread_name(), status); 
 	thread_exit();	
 }
@@ -146,5 +148,8 @@ int open (const char *file) {
 	}
 
 	return fd;
+}
 
+tid_t fork (const char *thread_name, struct intr_frame *f){
+	return process_fork(thread_name, f);
 }
