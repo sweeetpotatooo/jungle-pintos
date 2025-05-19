@@ -3,13 +3,17 @@
 #include <syscall-nr.h>
 #include "threads/interrupt.h"
 #include "threads/thread.h"
+#include "threads/synch.h"
 #include "threads/loader.h"
 #include "userprog/gdt.h"
 #include "threads/flags.h"
+#include "filesys/filesys.h"
+#include "threads/synch.h"
 #include "intrinsic.h"
 
 void syscall_entry (void);
 void syscall_handler (struct intr_frame *);
+bool create (const char *file, unsigned initial_size);
 
 /* System call.
  *
@@ -23,6 +27,16 @@ void syscall_handler (struct intr_frame *);
 #define MSR_STAR 0xc0000081         /* Segment selector msr */
 #define MSR_LSTAR 0xc0000082        /* Long mode SYSCALL target */
 #define MSR_SYSCALL_MASK 0xc0000084 /* Mask for the eflags */
+
+void check_address(void *addr)
+{
+    // kernel VM 못가게, 할당된 page가 존재하도록(빈공간접근 못하게)
+    struct thread *cur = thread_current();
+    if (is_kernel_vaddr(addr) || pml4_get_page(cur->pml4, addr) == NULL)
+    {
+        exit(-1);
+    }
+}
 
 void
 syscall_init (void) {
@@ -53,10 +67,12 @@ syscall_handler (struct intr_frame *f UNUSED) {
 	case SYS_EXEC:
 		break;
 	case SYS_CREATE:
+			f->R.rax = create(f->R.rdi, f->R.rsi);
 		break;
 	case SYS_REMOVE:
 		break;
 	case SYS_OPEN:
+			f->R.rax = open(f->R.rdi);
 		break;
 	case SYS_FILESIZE:
 		break;
@@ -101,3 +117,28 @@ int write (int fd, const void *buffer, unsigned size) {
 
   return -1;
 }
+
+bool create (const char *file, unsigned initial_size){
+	check_address(file);
+    return filesys_create(file, initial_size);
+}
+
+int open (const char *file) {
+	check_address(file); // 주소 유효한지 체크
+	struct file *opened_file = filesys_open(file); // 파일 열기 시도, 열려고 하는 파일 정보 filesys_open()으로 받기
+	
+	// 제대로 파일 생성됐는지 체크
+	if (opened_file == NULL) {
+		return -1;
+	}
+	int fd = allocate_fd(opened_file); // 만들어진 파일 스레드 내 fdt 테이블에 추가
+
+	// 만약 파일을 열 수 없으면 -1
+	if (fd == -1) {
+		file_close(opened_file);
+	}
+
+	return fd;
+
+}
+
