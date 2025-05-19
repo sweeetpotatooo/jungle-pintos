@@ -57,10 +57,10 @@ syscall_handler (struct intr_frame *f UNUSED) {
 	switch (f->R.rax)
 	{
 	case SYS_HALT:
-		halt(); // 핀토스 종료
+			halt(); // 핀토스 종료
 		break;
 	case SYS_EXIT:
-		exit(f->R.rdi);	// 프로세스 종료
+			exit(f->R.rdi);	// 프로세스 종료
 		break;
 	case SYS_FORK:
 		break;
@@ -125,6 +125,11 @@ bool create (const char *file, unsigned initial_size){
     return filesys_create(file, initial_size);
 }
 
+bool remove (const char *file) {
+	check_address(file);
+	return filesys_remove(file);
+}
+
 int open (const char *file) {
 	check_address(file); // 주소 유효한지 체크
 	struct file *opened_file = filesys_open(file); // 파일 열기 시도, 열려고 하는 파일 정보 filesys_open()으로 받기
@@ -142,9 +147,4 @@ int open (const char *file) {
 
 	return fd;
 
-
-bool remove (const char *file) {
-	check_address(file);
-}
-	return filesys_remove(file);
 }
