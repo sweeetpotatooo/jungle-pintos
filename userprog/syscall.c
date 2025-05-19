@@ -40,6 +40,20 @@ void check_address(void *addr)
     }
 }
 
+
+// fd로 파일 찾기
+struct file *find_file_by_fd(int fd){
+	   struct list_elem *e;
+    struct thread *cur = thread_current();
+
+    for (e = list_begin(&cur->fd_list); e != list_end(&cur->fd_list); e = list_next(e)) {
+        struct file_descriptor *fd_struct = list_entry(e, struct file_descriptor, fd_elem);
+        if (fd_struct->fd == fd) {
+            return fd_struct->file_p;  // 매칭되는 파일 포인터 반환
+        }
+	return ;
+}
+}
 void
 syscall_init (void) {
 	write_msr(MSR_STAR, ((uint64_t)SEL_UCSEG - 0x10) << 48  |
@@ -81,6 +95,7 @@ syscall_handler (struct intr_frame *f UNUSED) {
 	case SYS_FILESIZE:
 		break;
 	case SYS_READ:
+			f->R.rax = read(f->R.rdi, f->R.rsi, f->R.rdx);
 		break;
 	case SYS_WRITE:
 			f->R.rax = write(f->R.rdi, f->R.rsi, f->R.rdx);
@@ -98,7 +113,6 @@ syscall_handler (struct intr_frame *f UNUSED) {
 	}
 
 }
-
 
 void halt(void) {
 	power_off();
@@ -152,4 +166,23 @@ int open (const char *file) {
 
 tid_t fork (const char *thread_name, struct intr_frame *f){
 	return process_fork(thread_name, f);
+}
+
+int read(int fd, void *buffer, unsigned size){
+// Read size bytes from the file open as fd into buffer.
+// Return the number of bytes actually read (0 at end of file), or -1 if fails.
+// If fd is 0, it reads from keyboard using input_getc(), otherwise reads from file using file_read() function.
+// 	uint8_t input_getc(void)
+// 	off_t file_read(struct file *file, void *buffer, off_t size)
+
+	check_address(buffer); // 유효주소 확인
+
+	struct file *f = find_file_by_fd(fd);  // fd값으로 파일 찾기
+	if (f == NULL)
+    return -1;
+
+	int bytes_read = file_read(f,buffer,size);
+	return bytes_read;
+
+
 }

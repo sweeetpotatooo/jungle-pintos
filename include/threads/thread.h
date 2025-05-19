@@ -135,8 +135,6 @@ struct thread {
 
 	bool already_waited;
 	struct intr_frame parent_if;
-	struct file *fd_table[MAX_FD_NUM];
-	int fdidx;
     /* Owned by userprog/process.c. */
     uint64_t *pml4;                     /* 페이지 맵 레벨 4 포인터 */
 #endif
