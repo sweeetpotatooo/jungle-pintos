@@ -966,16 +966,15 @@ int allocate_fd (struct file *file)
 }
 
 
-struct file *find_file_by_fd(int fd){
-	   struct list_elem *e;
+struct file *find_file_by_fd(int fd) {
     struct thread *cur = thread_current();
-
+    struct list_elem *e;
     for (e = list_begin(&cur->fd_list); e != list_end(&cur->fd_list); e = list_next(e)) {
-        struct file_descriptor *fd_struct = list_entry(e, struct file_descriptor, fd_elem);
-        if (fd_struct->fd == fd) {
-            return fd_struct->file_p;  // 매칭되는 파일 포인터 반환
-        }
-	return ;
-}
+        struct file_descriptor *d =
+            list_entry(e, struct file_descriptor, fd_elem);
+        if (d->fd == fd)
+            return d->file_p;
+    }
+    return NULL;  // 모든 요소 검사 후에도 매칭이 없으면 NULL 반환
 }
 

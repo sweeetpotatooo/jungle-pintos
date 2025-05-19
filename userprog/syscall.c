@@ -11,11 +11,13 @@
 #include "intrinsic.h"
 #include "userprog/process.h"
 
+
 void syscall_entry (void);
 void syscall_handler (struct intr_frame *);
 bool create (const char *file, unsigned initial_size);
 tid_t fork (const char *thread_name, struct intr_frame *f);
 bool remove (const char *file);
+int filesize(int fd) ;
 
 /* System call.
  *
@@ -40,20 +42,6 @@ void check_address(void *addr)
     }
 }
 
-
-// fd로 파일 찾기
-struct file *find_file_by_fd(int fd){
-	   struct list_elem *e;
-    struct thread *cur = thread_current();
-
-    for (e = list_begin(&cur->fd_list); e != list_end(&cur->fd_list); e = list_next(e)) {
-        struct file_descriptor *fd_struct = list_entry(e, struct file_descriptor, fd_elem);
-        if (fd_struct->fd == fd) {
-            return fd_struct->file_p;  // 매칭되는 파일 포인터 반환
-        }
-	return ;
-}
-}
 void
 syscall_init (void) {
 	write_msr(MSR_STAR, ((uint64_t)SEL_UCSEG - 0x10) << 48  |
@@ -93,6 +81,7 @@ syscall_handler (struct intr_frame *f UNUSED) {
 			f->R.rax = open(f->R.rdi);
 		break;
 	case SYS_FILESIZE:
+				f->R.rax = filesize(f->R.rdi);
 		break;
 	case SYS_READ:
 			f->R.rax = read(f->R.rdi, f->R.rsi, f->R.rdx);
@@ -185,4 +174,12 @@ int read(int fd, void *buffer, unsigned size){
 	return bytes_read;
 
 
+}
+
+int filesize (int fd)
+{
+    struct file *file = find_file_by_fd(fd);
+    if (file == NULL)
+        return -1;                  /* 해당 fd가 없으면 에러 */
+    return file_length(file);       /* file_length()로 크기 반환 */
 }

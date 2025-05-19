@@ -207,6 +207,6 @@ void mlfqs_load_avg(void);
 void mlfqs_increment(void);
 void mlfqs_recalc_recent_cpu(void);
 void mlfqs_recalc_priority(void);
-int
-allocate_fd (struct file *file);
+int allocate_fd (struct file *file);
+struct file *find_file_by_fd(int fd);
 #endif /* THREADS_THREAD_H */
