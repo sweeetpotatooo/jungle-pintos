@@ -42,6 +42,10 @@ typedef int tid_t;
 #define RECENT_CPU_DEFAULT 0
 #define LOAD_AVG_DEFAULT 0
 
+/* project2 - file descriptor */
+#define FDT_PAGES 2 // 파일 디스크럽터 테이블에 할당할 페이지 수
+#define FDT_COUNT_LIMIT 128 // 파일 디스크럽터 개수 제한
+
 /* A kernel thread or user process.
  *
  * Each thread structure is stored in its own 4 kB page.  The

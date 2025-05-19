@@ -513,10 +513,18 @@ load (const char *file_name, struct intr_frame *if_) {
 	for (i = 0; i < ehdr.e_phnum; i++) {
 		struct Phdr phdr;
 
-		off_t phdr_ofs = ehdr.e_phoff + i * sizeof(struct Phdr);
-		file_seek(file, phdr_ofs);
-		if (file_read(file, &phdr, sizeof phdr) != sizeof phdr)
-			goto done;
+		#ifdef WSL
+				// WSL 전용 코드
+				off_t phdr_ofs = ehdr.e_phoff + i * sizeof(struct Phdr);
+				file_seek(file, phdr_ofs);
+				if (file_read(file, &phdr, sizeof phdr) != sizeof phdr)
+					goto done;
+		#else
+				// docker(기본) 전용 코드
+				if (file_ofs < 0 || file_ofs > file_length(file))
+					goto done;
+				file_seek(file, file_ofs);
+		#endif
 
 		if (file_read (file, &phdr, sizeof phdr) != sizeof phdr)
 			goto done;

@@ -11,11 +11,16 @@
 #include "intrinsic.h"
 #include "userprog/process.h"
 
+
 void syscall_entry (void);
 void syscall_handler (struct intr_frame *);
 bool create (const char *file, unsigned initial_size);
 tid_t fork (const char *thread_name, struct intr_frame *f);
 bool remove (const char *file);
+struct file *find_file_by_fd(int fd);
+int filesize(int fd) ;
+void seek(int fd, unsigned position);
+unsigned tell(int fd);
 
 /* System call.
  *
@@ -79,15 +84,19 @@ syscall_handler (struct intr_frame *f UNUSED) {
 			f->R.rax = open(f->R.rdi);
 		break;
 	case SYS_FILESIZE:
+			f->R.rax = filesize(f->R.rdi);
 		break;
 	case SYS_READ:
+			f->R.rax = read(f->R.rdi, f->R.rsi, f->R.rdx);
 		break;
 	case SYS_WRITE:
 			f->R.rax = write(f->R.rdi, f->R.rsi, f->R.rdx);
 		break;
 	case SYS_SEEK:
+		seek(f->R.rdi, f->R.rsi);
 		break;
 	case SYS_TELL:
+		f->R.rax = tell(f->R.rdi);
 		break;
 	case SYS_CLOSE:
 		break;
@@ -98,7 +107,6 @@ syscall_handler (struct intr_frame *f UNUSED) {
 	}
 
 }
-
 
 void halt(void) {
 	power_off();
@@ -152,4 +160,72 @@ int open (const char *file) {
 
 tid_t fork (const char *thread_name, struct intr_frame *f){
 	return process_fork(thread_name, f);
+}
+
+int read(int fd, void *buffer, unsigned size){
+// Read size bytes from the file open as fd into buffer.
+// Return the number of bytes actually read (0 at end of file), or -1 if fails.
+// If fd is 0, it reads from keyboard using input_getc(), otherwise reads from file using file_read() function.
+// 	uint8_t input_getc(void)
+// 	off_t file_read(struct file *file, void *buffer, off_t size)
+
+	check_address(buffer); // 유효주소 확인
+
+	struct file *f = find_file_by_fd(fd);  // fd값으로 파일 찾기
+	if (f == NULL)
+    return -1;
+
+	int bytes_read = file_read(f,buffer,size);
+	return bytes_read;
+
+
+}
+
+// fd에 해당하는 file 포인터를 반환
+struct file *find_file_by_fd(int fd){
+    struct thread *cur = thread_current();  // 현재 스레드
+    struct list_elem *e;
+    // 파일 디스크럽터 리스트를 돌면서
+    for (e = list_begin(&cur -> fd_list); e != list_end(&cur -> fd_list); e = list_next(e)) {
+        struct file_descriptor *fdesc = list_entry(e, struct file_descriptor, fd_elem); // 현재 스레드의 구조체
+        // 현재 스레드의 FD 번호와 목표 FD 번호가 같으면
+        if (fdesc -> fd == fd) {
+            return fdesc -> file_p;    // 파일 포인터를 반환함
+        }
+    }
+
+	return NULL;
+}
+
+// 파일 디스크럽터를 사용하여 파일의 크기를 가져오는 함수
+int filesize(int fd) {
+    struct file *file = find_file_by_fd(fd);	// 파일 포인터
+
+	if (file == NULL) {
+		return -1;
+	}
+
+	return file_length(file);	// 파일의 크기를 반환함
+}
+
+// 열려있는 파일 디스크립터 fd의 파일 포인터를 position으로 이동시키는 함수
+void seek(int fd, unsigned position) {
+	struct file *file = find_file_by_fd(fd);	// 파일 포인터
+
+	if (file == NULL) {
+		return -1;
+	}
+
+	file_seek(file, position);
+}
+
+// fd에서 다음에 읽거나 쓸 바이트의 위치를 반환하는 함수
+unsigned tell(int fd) {
+	struct file *file = find_file_by_fd(fd);
+
+	if (file == NULL) {
+		return -1;
+	}
+
+	file_tell(file);
 }
