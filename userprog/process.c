@@ -261,6 +261,40 @@ process_wait (tid_t child_tid UNUSED) {	// 자식 프로세스, 종료 시 exit 
 	for (int i = 0; i < 100000000; i++){
 		int data = 1;
 	}
+	for (int i = 0; i < 100000000; i++){
+		int data = 1;
+	}
+	for (int i = 0; i < 100000000; i++){
+		int data = 1;
+	}
+	for (int i = 0; i < 100000000; i++){
+		int data = 1;
+	}
+	for (int i = 0; i < 100000000; i++){
+		int data = 1;
+	}
+	for (int i = 0; i < 100000000; i++){
+		int data = 1;
+	}
+	for (int i = 0; i < 100000000; i++){
+		int data = 1;
+	}
+	for (int i = 0; i < 100000000; i++){
+		int data = 1;
+	}
+	for (int i = 0; i < 100000000; i++){
+		int data = 1;
+	}
+	for (int i = 0; i < 100000000; i++){
+		int data = 1;
+	}
+	for (int i = 0; i < 100000000; i++){
+		int data = 1;
+	}
+	for (int i = 0; i < 100000000; i++){
+		int data = 1;
+	}
+
 	return -1;
 }
 
@@ -416,9 +450,10 @@ load (const char *file_name, struct intr_frame *if_) {
 	for (i = 0; i < ehdr.e_phnum; i++) {
 		struct Phdr phdr;
 
-		if (file_ofs < 0 || file_ofs > file_length (file))
+		off_t phdr_ofs = ehdr.e_phoff + i * sizeof(struct Phdr);
+		file_seek(file, phdr_ofs);
+		if (file_read(file, &phdr, sizeof phdr) != sizeof phdr)
 			goto done;
-		file_seek (file, file_ofs);
 
 		if (file_read (file, &phdr, sizeof phdr) != sizeof phdr)
 			goto done;
