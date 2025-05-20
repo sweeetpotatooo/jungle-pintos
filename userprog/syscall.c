@@ -17,8 +17,11 @@ void syscall_handler (struct intr_frame *);
 bool create (const char *file, unsigned initial_size);
 tid_t fork (const char *thread_name, struct intr_frame *f);
 bool remove (const char *file);
-int filesize(int fd);
-void close (int fd);
+int filesize(int fd) ;
+void seek(int fd, unsigned position);
+unsigned tell(int fd);
+void close (inf fd);
+
 /* System call.
  *
  * Previously system call services was handled by the interrupt handler
@@ -61,10 +64,10 @@ syscall_handler (struct intr_frame *f UNUSED) {
 	switch (f->R.rax)
 	{
 	case SYS_HALT:
-			halt(); // 핀토스 종료
+		halt(); // 핀토스 종료
 		break;
 	case SYS_EXIT:
-			exit(f->R.rdi);	// 프로세스 종료
+		exit(f->R.rdi);	// 프로세스 종료
 		break;
 	case SYS_FORK:
 		f->R.rax = fork(f->R.rdi, f);
@@ -78,23 +81,24 @@ syscall_handler (struct intr_frame *f UNUSED) {
 		f->R.rax = remove(f->R.rdi);
 		break;
 	case SYS_OPEN:
-			f->R.rax = open(f->R.rdi);
+		f->R.rax = open(f->R.rdi);
 		break;
 	case SYS_FILESIZE:
-				f->R.rax = filesize(f->R.rdi);
 		break;
 	case SYS_READ:
-			f->R.rax = read(f->R.rdi, f->R.rsi, f->R.rdx);
+		f->R.rax = read(f->R.rdi, f->R.rsi, f->R.rdx);
 		break;
 	case SYS_WRITE:
-			f->R.rax = write(f->R.rdi, f->R.rsi, f->R.rdx);
+		f->R.rax = write(f->R.rdi, f->R.rsi, f->R.rdx);
 		break;
 	case SYS_SEEK:
+		seek(f->R.rdi, f->R.rsi);
 		break;
 	case SYS_TELL:
+		f->R.rax = tell(f->R.rdi);
 		break;
 	case SYS_CLOSE:
-			close(f->R.rdi);
+		close(f->R.rdi);
 		break;
 	default:
 		printf ("system call!\n");
@@ -199,12 +203,35 @@ int read(int fd, void *buffer, unsigned size){
 
 }
 
-int filesize (int fd)
-{
-    struct file *file = find_file_by_fd(fd);
-    if (file == NULL)
-        return -1;                  /* 해당 fd가 없으면 에러 */
-    return file_length(file);       /* file_length()로 크기 반환 */
+// 파일 디스크럽터를 사용하여 파일의 크기를 가져오는 함수
+int filesize(int fd) {
+    struct file *file = find_file_by_fd(fd);	// 파일 포인터
+
+	if (file == NULL) {
+		return -1;
+	}
+
+	return file_length(file);	// 파일의 크기를 반환함
+}
+
+// 열려있는 파일 디스크립터 fd의 파일 포인터를 position으로 이동시키는 함수
+void seek(int fd, unsigned position) {
+	struct file *file = find_file_by_fd(fd);	// 파일 포인터
+
+	if (file != NULL) {
+		file_seek(file, position);
+	}
+}
+
+// fd에서 다음에 읽거나 쓸 바이트의 위치를 반환하는 함수
+unsigned tell(int fd) {
+	struct file *file = find_file_by_fd(fd);
+
+	if (file == NULL) {
+		return -1;
+	}
+
+	return file_tell(file);
 }
 
 void close (int fd)
