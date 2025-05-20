@@ -101,7 +101,6 @@ syscall_handler (struct intr_frame *f UNUSED) {
 		thread_exit ();
 		break;
 	}
-
 }
 
 void halt(void) {
@@ -215,13 +214,26 @@ void close (int fd)
 
 {
     struct file_descriptor *d = find_file_by_fd (fd);
-    if (d == NULL)
+
+		if (fd < 2)
+			return;
+
+		struct file *f = find_file_by_fd(fd);
+    if (f == NULL)
         return;
 
-    file_close (d->file_p);
+    file_close (f);
 
-    /* 리스트에서 제거후 메모리 해제 */
-    list_remove (&d->fd_elem);
-    palloc_free_page (d);
-
+    /* 리스트에서 제거 */
+    struct thread *cur = thread_current();
+    struct list_elem *e;
+    for (e = list_begin(&cur->fd_list); e != list_end(&cur->fd_list); e = list_next(e))
+    {
+        struct file_descriptor *d = list_entry(e, struct file_descriptor, fd_elem);
+        if (d->fd == fd) {
+            list_remove(&d->fd_elem);
+            free(d);
+            break;
+        }
+    }
 }
