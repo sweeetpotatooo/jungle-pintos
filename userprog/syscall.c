@@ -10,17 +10,20 @@
 #include "filesys/filesys.h"
 #include "intrinsic.h"
 #include "userprog/process.h"
-
+#include "threads/palloc.h"
+#include <string.h>
 
 void syscall_entry (void);
 void syscall_handler (struct intr_frame *);
 bool create (const char *file, unsigned initial_size);
 tid_t fork (const char *thread_name, struct intr_frame *f);
 bool remove (const char *file);
+int exec (const char *file_name);
 int filesize(int fd) ;
+void close (int fd);
+int wait(tid_t pid);
 void seek(int fd, unsigned position);
 unsigned tell(int fd);
-void close (inf fd);
 
 /* System call.
  *
@@ -73,6 +76,12 @@ syscall_handler (struct intr_frame *f UNUSED) {
 		f->R.rax = fork(f->R.rdi, f);
 		break;
 	case SYS_EXEC:
+		if (exec(f->R.rdi) == -1){
+			exit(-1);
+		}
+		break;
+	case SYS_WAIT:
+		f->R.rax = wait(f->R.rdi);
 		break;
 	case SYS_CREATE:
 		f->R.rax = create(f->R.rdi, f->R.rsi);
@@ -84,6 +93,7 @@ syscall_handler (struct intr_frame *f UNUSED) {
 		f->R.rax = open(f->R.rdi);
 		break;
 	case SYS_FILESIZE:
+		f->R.rax = filesize(f->R.rdi);
 		break;
 	case SYS_READ:
 		f->R.rax = read(f->R.rdi, f->R.rsi, f->R.rdx);
@@ -101,8 +111,7 @@ syscall_handler (struct intr_frame *f UNUSED) {
 		close(f->R.rdi);
 		break;
 	default:
-		printf ("system call!\n");
-		thread_exit ();
+		exit(-1);
 		break;
 	}
 }
@@ -114,7 +123,9 @@ void halt(void) {
 void exit(int status){
 	struct thread *cur = thread_current();
     cur->exit_status = status;
-	printf("%s: exit(%d)\n", thread_name(), status); 
+	printf("%s: exit(%d)\n", thread_name(), status);
+ 
+	sema_up(&cur->wait_sema);
 	thread_exit();	
 }
 
@@ -234,12 +245,27 @@ unsigned tell(int fd) {
 	return file_tell(file);
 }
 
-void close (int fd)
+int exec (const char *file_name){
+	check_address(file_name);
+
+	int size = strlen(file_name) + 1;
+	char *fn_copy = palloc_get_page(PAL_ZERO);
+	if ((fn_copy) == NULL) {
+		exit(-1);
+	}
+	strlcpy(fn_copy, file_name, size);
+
+	if (process_exec(fn_copy) == -1) {
+		return -1;
+	}
+
+	NOT_REACHED();
+	return 0;
+}
 
 // Close file descriptor fd.
 // Use void file_close(struct file *file).
-
-{
+void close (int fd){
     struct file_descriptor *d = find_file_by_fd (fd);
 
 		if (fd < 2)
@@ -264,3 +290,7 @@ void close (int fd)
         }
     }
 }
+
+int wait(tid_t pid){
+	process_wait(pid);
+};
