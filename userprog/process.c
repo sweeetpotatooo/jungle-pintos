@@ -187,7 +187,7 @@ __do_fork (void *aux) {
     for (e = list_begin(&parent->fd_list); e != list_end(&parent->fd_list); e = list_next(e)) {
         struct file_descriptor *parent_fd = list_entry(e, struct file_descriptor, fd_elem);
         
-        struct file *reopened = file_reopen(parent_fd->file_p);
+        struct file *reopened = file_duplicate(parent_fd->file_p);
         if (reopened == NULL)
             continue;
 
