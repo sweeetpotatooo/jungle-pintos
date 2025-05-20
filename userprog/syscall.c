@@ -97,6 +97,7 @@ syscall_handler (struct intr_frame *f UNUSED) {
 		f->R.rax = tell(f->R.rdi);
 		break;
 	case SYS_CLOSE:
+			close(f->R.rdi);
 		break;
 	default:
 		printf ("system call!\n");
@@ -117,15 +118,38 @@ void exit(int status){
 	thread_exit();	
 }
 
-int write (int fd, const void *buffer, unsigned size) {
-  // fd가 1이면 표준 출력
-  if (fd == 1) {
-    // putbuf: 커널 콘솔에 buffer의 내용을 size만큼 출력
-    putbuf(buffer, size);
-    return size;  // 출력한 바이트 수 반환
-  }
+int write (int fd, const void *buffer, unsigned size)
+{
+// Writes size bytes from buffer to the open file fd.
+// Returns the number of bytes actually written.
+// If fd is 1, it writes to the console using putbuf(), otherwise write to the file using file_write() function.
+// 		void putbuf(const char *buffer, size_t n)
+// 		off_t file_write(struct file *file, const void *buffer, off_t size)
 
-  return -1;
+
+    /* 유저 버퍼 유효성 검사 */
+    if (buffer == NULL)
+        return -1;
+    check_address(buffer);
+    if (size > 0)
+        check_address ((const char *)buffer + size - 1);
+    /* stdout (fd == 1) 처리 */
+    if (fd == 1) {
+				// putbuf: 커널 콘솔에 buffer의 내용을 size만큼 출력
+        putbuf (buffer, size);
+        return size;
+    }
+    /* stdin (fd == 0) 쓰기 불가 */
+    if (fd == 0)
+        return -1;
+    /* 열린 파일 조회 */
+    struct file *f = find_file_by_fd(fd);
+    if (f == NULL)
+        return -1;
+
+    /* 실제 파일에 쓰기 */
+    off_t written = file_write (f, buffer, size);
+    return written;
 }
 
 bool create (const char *file, unsigned initial_size){
@@ -179,33 +203,28 @@ int read(int fd, void *buffer, unsigned size){
 
 }
 
-// 파일 디스크럽터를 사용하여 파일의 크기를 가져오는 함수
-int filesize(int fd) {
-    struct file *file = find_file_by_fd(fd);	// 파일 포인터
-
-	if (file == NULL) {
-		return -1;
-	}
-
-	return file_length(file);	// 파일의 크기를 반환함
+int filesize (int fd)
+{
+    struct file *file = find_file_by_fd(fd);
+    if (file == NULL)
+        return -1;                  /* 해당 fd가 없으면 에러 */
+    return file_length(file);       /* file_length()로 크기 반환 */
 }
 
-// 열려있는 파일 디스크립터 fd의 파일 포인터를 position으로 이동시키는 함수
-void seek(int fd, unsigned position) {
-	struct file *file = find_file_by_fd(fd);	// 파일 포인터
+void close (int fd)
 
-	if (file != NULL) {
-		file_seek(file, position);
-	}
-}
+// Close file descriptor fd.
+// Use void file_close(struct file *file).
 
-// fd에서 다음에 읽거나 쓸 바이트의 위치를 반환하는 함수
-unsigned tell(int fd) {
-	struct file *file = find_file_by_fd(fd);
+{
+    struct file_descriptor *d = find_file_by_fd (fd);
+    if (d == NULL)
+        return;
 
-	if (file == NULL) {
-		return -1;
-	}
+    file_close (d->file_p);
 
-	return file_tell(file);
+    /* 리스트에서 제거후 메모리 해제 */
+    list_remove (&d->fd_elem);
+    palloc_free_page (d);
+
 }
