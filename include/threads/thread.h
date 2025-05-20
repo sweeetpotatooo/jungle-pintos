@@ -132,7 +132,7 @@ struct thread {
 	struct list child_list;
 	struct list_elem child_elem;
 	struct thread *parent;
-
+    struct file *running;
 	bool already_waited;
 	struct intr_frame parent_if;
     /* Owned by userprog/process.c. */
