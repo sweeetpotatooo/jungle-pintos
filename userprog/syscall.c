@@ -18,7 +18,7 @@ bool create (const char *file, unsigned initial_size);
 tid_t fork (const char *thread_name, struct intr_frame *f);
 bool remove (const char *file);
 int filesize(int fd);
-
+void close (int fd);
 /* System call.
  *
  * Previously system call services was handled by the interrupt handler
@@ -94,6 +94,7 @@ syscall_handler (struct intr_frame *f UNUSED) {
 	case SYS_TELL:
 		break;
 	case SYS_CLOSE:
+			close(f->R.rdi);
 		break;
 	default:
 		printf ("system call!\n");
@@ -205,4 +206,22 @@ int filesize (int fd)
     if (file == NULL)
         return -1;                  /* 해당 fd가 없으면 에러 */
     return file_length(file);       /* file_length()로 크기 반환 */
+}
+
+void close (int fd)
+
+// Close file descriptor fd.
+// Use void file_close(struct file *file).
+
+{
+    struct file_descriptor *d = find_file_by_fd (fd);
+    if (d == NULL)
+        return;
+
+    file_close (d->file_p);
+
+    /* 리스트에서 제거후 메모리 해제 */
+    list_remove (&d->fd_elem);
+    palloc_free_page (d);
+
 }
