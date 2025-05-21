@@ -180,7 +180,9 @@ __do_fork (void *aux) {
     if (!pml4_for_each (parent->pml4, duplicate_pte, parent))
         goto error;
 #endif
-
+	if (parent->last_created_fd >= FDCOUNT_LIMIT) {
+		goto error;
+	}
    	 /* 3. 파일 디스크립터 복사 (fd_list 기반) */
     list_init(&current->fd_list);
     struct list_elem *e;
@@ -349,13 +351,16 @@ process_exit (void) {
         if (fd->file_p != NULL)
             file_close(fd->file_p);
         list_remove(e);
+
         free(fd);
     }
 
-	file_close(curr->running); // 추가 기능
-	process_cleanup ();
-	sema_up(&curr->wait_sema);
+	file_close(curr->running);
+
+	// sema_up(&curr->wait_sema);
 	sema_down(&curr->free_sema);
+	process_cleanup ();
+
 }
 
 /* Free the current process's resources. */

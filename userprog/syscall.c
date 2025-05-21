@@ -37,6 +37,9 @@ unsigned tell(int fd);
 #define MSR_STAR 0xc0000081         /* Segment selector msr */
 #define MSR_LSTAR 0xc0000082        /* Long mode SYSCALL target */
 #define MSR_SYSCALL_MASK 0xc0000084 /* Mask for the eflags */
+/* Predefined file handles. */
+#define STDIN_FILENO 0
+#define STDOUT_FILENO 1
 
 void check_address(void *addr)
 {
@@ -59,6 +62,7 @@ syscall_init (void) {
 	 * mode stack. Therefore, we masked the FLAG_FL. */
 	write_msr(MSR_SYSCALL_MASK,
 			FLAG_IF | FLAG_TF | FLAG_DF | FLAG_IOPL | FLAG_AC | FLAG_NT);
+	lock_init(&filesys_lock);
 }
 
 /* The main system call interface */
@@ -111,7 +115,7 @@ syscall_handler (struct intr_frame *f UNUSED) {
 		close(f->R.rdi);
 		break;
 	default:
-		exit(-1);
+		thread_exit();
 		break;
 	}
 }
@@ -125,43 +129,33 @@ void exit(int status){
     cur->exit_status = status;
 	printf("%s: exit(%d)\n", thread_name(), status);
  
-	// sema_up(&cur->wait_sema);
+	sema_up(&cur->wait_sema);
 	thread_exit();	
 }
 
-int write (int fd, const void *buffer, unsigned size)
-{
-// Writes size bytes from buffer to the open file fd.
-// Returns the number of bytes actually written.
-// If fd is 1, it writes to the console using putbuf(), otherwise write to the file using file_write() function.
-// 		void putbuf(const char *buffer, size_t n)
-// 		off_t file_write(struct file *file, const void *buffer, off_t size)
+int write(int fd, const void *buffer, unsigned size) {
+	check_address(buffer);
+	check_address((char *)buffer + size - 1);
 
+	if (fd == STDOUT_FILENO) {
+		putbuf(buffer, size);
+		return size;
+	}
 
-    /* 유저 버퍼 유효성 검사 */
-    if (buffer == NULL)
-        return -1;
-    check_address(buffer);
-    if (size > 0)
-        check_address ((const char *)buffer + size - 1);
-    /* stdout (fd == 1) 처리 */
-    if (fd == 1) {
-				// putbuf: 커널 콘솔에 buffer의 내용을 size만큼 출력
-        putbuf (buffer, size);
-        return size;
-    }
-    /* stdin (fd == 0) 쓰기 불가 */
-    if (fd == 0)
-        return -1;
-    /* 열린 파일 조회 */
-    struct file *f = find_file_by_fd(fd);
-    if (f == NULL)
-        return -1;
+	if (fd == STDIN_FILENO || fd < 2)
+		return -1;
 
-    /* 실제 파일에 쓰기 */
-    off_t written = file_write (f, buffer, size);
-    return written;
+	struct file *f = find_file_by_fd(fd);
+	if (f == NULL)
+		return -1;
+
+	lock_acquire(&filesys_lock);
+	int ret = file_write(f, buffer, size);
+	lock_release(&filesys_lock);
+	return ret;
 }
+
+
 
 bool create (const char *file, unsigned initial_size){
 	check_address(file);
@@ -175,19 +169,20 @@ bool remove (const char *file) {
 
 int open (const char *file) {
 	check_address(file); // 주소 유효한지 체크
-	struct file *opened_file = filesys_open(file); // 파일 열기 시도, 열려고 하는 파일 정보 filesys_open()으로 받기
-	
-	// 제대로 파일 생성됐는지 체크
-	if (opened_file == NULL) {
+	if (file == NULL) {
 		return -1;
 	}
-	int fd = allocate_fd(opened_file); // 만들어진 파일 스레드 내 fdt 테이블에 추가
-
+	lock_acquire(&filesys_lock);
+	struct file *opened_file = filesys_open(file); // 파일 열기 시도, 열려고 하는 파일 정보 filesys_open()으로 받기
+	if (opened_file == NULL) {
+      return -1;
+  	} 
+	int fd = allocate_fd(opened_file); // 만들어진 파일 스레드 내 fdt 테이블에 추가	
 	// 만약 파일을 열 수 없으면 -1
 	if (fd == -1) {
 		file_close(opened_file);
 	}
-
+	lock_release(&filesys_lock);
 	return fd;
 }
 
@@ -195,24 +190,30 @@ tid_t fork (const char *thread_name, struct intr_frame *f){
 	return process_fork(thread_name, f);
 }
 
-int read(int fd, void *buffer, unsigned size){
-// Read size bytes from the file open as fd into buffer.
-// Return the number of bytes actually read (0 at end of file), or -1 if fails.
-// If fd is 0, it reads from keyboard using input_getc(), otherwise reads from file using file_read() function.
-// 	uint8_t input_getc(void)
-// 	off_t file_read(struct file *file, void *buffer, off_t size)
+int read(int fd, void *buffer, unsigned size) {
+	check_address(buffer);
+	check_address((char *)buffer + size - 1);
 
-	check_address(buffer); // 유효주소 확인
+	if (fd == STDOUT_FILENO)
+		return -1;
 
-	struct file *f = find_file_by_fd(fd);  // fd값으로 파일 찾기
+	if (fd == STDIN_FILENO) {
+		unsigned char *buf = buffer;
+		for (unsigned i = 0; i < size; i++)
+			buf[i] = input_getc();
+		return size;
+	}
+
+	struct file *f = find_file_by_fd(fd);
 	if (f == NULL)
-    return -1;
+		return -1;
 
-	int bytes_read = file_read(f,buffer,size);
-	return bytes_read;
-
-
+	lock_acquire(&filesys_lock);
+	int ret = file_read(f, buffer, size);
+	lock_release(&filesys_lock);
+	return ret;
 }
+
 
 // 파일 디스크럽터를 사용하여 파일의 크기를 가져오는 함수
 int filesize(int fd) {
@@ -223,26 +224,6 @@ int filesize(int fd) {
 	}
 
 	return file_length(file);	// 파일의 크기를 반환함
-}
-
-// 열려있는 파일 디스크립터 fd의 파일 포인터를 position으로 이동시키는 함수
-void seek(int fd, unsigned position) {
-	struct file *file = find_file_by_fd(fd);	// 파일 포인터
-
-	if (file != NULL) {
-		file_seek(file, position);
-	}
-}
-
-// fd에서 다음에 읽거나 쓸 바이트의 위치를 반환하는 함수
-unsigned tell(int fd) {
-	struct file *file = find_file_by_fd(fd);
-
-	if (file == NULL) {
-		return -1;
-	}
-
-	return file_tell(file);
 }
 
 int exec (const char *file_name){
@@ -270,34 +251,53 @@ int exec (const char *file_name){
 	return 0;
 }
 
+// 열려있는 파일 디스크립터 fd의 파일 포인터를 position으로 이동시키는 함수
+void seek(int fd, unsigned position) {
+	struct file *file = find_file_by_fd(fd);	// 파일 포인터
+
+	if (file != NULL) {
+		file_seek(file, position);
+	}
+}
+
+// fd에서 다음에 읽거나 쓸 바이트의 위치를 반환하는 함수
+unsigned tell(int fd) {
+	struct file *file = find_file_by_fd(fd);
+
+	if (file == NULL) {
+		return -1;
+	}
+
+	return file_tell(file);
+}
+
+struct lock filesys_lock;
+
 // Close file descriptor fd.
 // Use void file_close(struct file *file).
-void close (int fd){
-    struct file_descriptor *d = find_file_by_fd (fd);
+void close(int fd) {
+    if (fd < 2)
+        return;  // stdin, stdout은 닫지 않음
 
-		if (fd < 2)
-			return;
-
-		struct file *f = find_file_by_fd(fd);
-    if (f == NULL)
-        return;
-
-    file_close (f);
-
-    /* 리스트에서 제거 */
     struct thread *cur = thread_current();
-    struct list_elem *e;
-    for (e = list_begin(&cur->fd_list); e != list_end(&cur->fd_list); e = list_next(e))
-    {
-        struct file_descriptor *d = list_entry(e, struct file_descriptor, fd_elem);
-        if (d->fd == fd) {
-            list_remove(&d->fd_elem);
-            free(d);
-            break;
+    struct list_elem *e, *next;
+
+    for (e = list_begin(&cur->fd_list); e != list_end(&cur->fd_list); e = next) {
+        next = list_next(e);
+
+        struct file_descriptor *desc = list_entry(e, struct file_descriptor, fd_elem);
+        if (desc->fd == fd) {
+            // 파일을 닫고 리스트에서 제거 및 메모리 해제
+            if (desc->file_p != NULL)
+                file_close(desc->file_p);
+
+            list_remove(e);
+            free(desc);
+            return;
         }
     }
 }
 
 int wait(tid_t pid){
-	process_wait(pid);
+	return process_wait(pid);
 };
