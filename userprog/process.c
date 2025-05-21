@@ -163,11 +163,11 @@ __do_fork (void *aux) {
     struct thread *current = thread_current ();
     struct intr_frame *parent_if = &parent->parent_if;
 
-    /* CPU 컨텍스트 복사 */
+    /* 1. CPU 컨텍스트 복사 */
     memcpy (&if_, parent_if, sizeof (struct intr_frame));
     if_.R.rax = 0;
 
-    /* 새로운 페이지 테이블 생성 */
+    /* 2. 새로운 페이지 테이블 생성 및 복사 */
     current->pml4 = pml4_create ();
     if (current->pml4 == NULL)
         goto error;
@@ -180,45 +180,35 @@ __do_fork (void *aux) {
     if (!pml4_for_each (parent->pml4, duplicate_pte, parent))
         goto error;
 #endif
-	if (parent->last_created_fd >= FDCOUNT_LIMIT) {
-		goto error;
-	}
-   	 /* 3. 파일 디스크립터 복사 (fd_list 기반) */
-    list_init(&current->fd_list);
-    struct list_elem *e;
-    for (e = list_begin(&parent->fd_list); e != list_end(&parent->fd_list); e = list_next(e)) {
-        struct file_descriptor *parent_fd = list_entry(e, struct file_descriptor, fd_elem);
-        
-        struct file *dup = file_duplicate(parent_fd->file_p);
-        if (dup == NULL)
+
+    /* 3. 파일 디스크립터 복사 (배열 기반) */
+    for (int fd = 2; fd < MAX_FD_NUM; fd++) {
+        struct file *parent_file = parent->fd_table[fd];
+        if (parent_file == NULL)
             continue;
 
-        struct file_descriptor *child_fd = malloc(sizeof(struct file_descriptor));
-        if (child_fd == NULL) {
-            file_close(dup);
+        struct file *dup_file = file_duplicate(parent_file);
+        if (dup_file == NULL)
             continue;
-        }
 
-        child_fd->fd = parent_fd->fd;
-        child_fd->file_p = dup;
-        list_push_back(&current->fd_list, &child_fd->fd_elem);
-
-        if (current->last_created_fd <= parent_fd->fd)
-            current->last_created_fd = parent_fd->fd + 1;
+        current->fd_table[fd] = dup_file;
+        if (current->next_fd <= fd)
+            current->next_fd = fd + 1;
     }
 
-
-	process_init();
+    /* 4. 프로세스 초기화 및 부모에 로드 완료 알림 */
+    process_init ();
     sema_up (&current->fork_sema);
 
-
-	do_iret (&if_);
+    /* 5. 사용자 문맥으로 복귀 */
+    do_iret (&if_);
 
 error:
-	current->exit_status = TID_ERROR;
+    current->exit_status = TID_ERROR;
     sema_up (&current->fork_sema);
-    thread_exit();
+    thread_exit ();
 }
+
 /* Switch the current execution context to the f_name.
  * Returns -1 on fail. */
 int
@@ -339,29 +329,28 @@ process_wait (tid_t child_tid) {
 /* Exit the process. This function is called by thread_exit (). */
 void
 process_exit (void) {
-	struct thread *curr = thread_current ();
-	/* TODO: Your code goes here.
-	 * TODO: Implement process termination message (see
-	 * TODO: project2/process_termination.html).
-	 * TODO: We recommend you to implement process resource cleanup here. */
-	struct list_elem *e, *next;
-    for (e = list_begin(&curr->fd_list); e != list_end(&curr->fd_list); e = next) {
-        next = list_next(e);
-        struct file_descriptor *fd = list_entry(e, struct file_descriptor, fd_elem);
-        if (fd->file_p != NULL)
-            file_close(fd->file_p);
-        list_remove(e);
+    struct thread *curr = thread_current ();
 
-        free(fd);
+    /* 1) 배열 기반 FD 테이블 정리 */
+    for (int fd = 2; fd < MAX_FD_NUM; fd++) {
+        if (curr->fd_table[fd] != NULL) {
+            file_close(curr->fd_table[fd]);
+            curr->fd_table[fd] = NULL;
+        }
     }
 
-	file_close(curr->running);
+    /* 2) 실행 중이던 파일 닫기 */
+    if (curr->running != NULL) {
+        file_close(curr->running);
+        curr->running = NULL;
+    }
 
-	// sema_up(&curr->wait_sema);
-	sema_down(&curr->free_sema);
-	process_cleanup ();
-
+    /* 3) 나머지 리소스 해제 */
+    process_cleanup ();
+    sema_up(&curr->wait_sema);
+    sema_down(&curr->free_sema);
 }
+
 
 /* Free the current process's resources. */
 static void

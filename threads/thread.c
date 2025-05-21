@@ -108,35 +108,36 @@ static uint64_t gdt[3] = { 0, 0x00af9a000000ffff, 0x00cf92000000ffff };
    finishes. */
 void
 thread_init (void) {
-	ASSERT (intr_get_level () == INTR_OFF);
+    ASSERT (intr_get_level () == INTR_OFF);
 
-	/* Reload the temporal gdt for the kernel
-	 * This gdt does not include the user context.
-	 * The kernel will rebuild the gdt with user context, in gdt_init (). */
-	struct desc_ptr gdt_ds = {
-		.size = sizeof (gdt) - 1,
-		.address = (uint64_t) gdt
-	};
-	lgdt (&gdt_ds);
+    /* Reload the temporal GDT for the kernel */
+    struct desc_ptr gdt_ds = {
+        .size    = sizeof (gdt) - 1,
+        .address = (uint64_t) gdt
+    };
+    lgdt (&gdt_ds);
 
-	/* Init the globla thread context */
-	lock_init (&tid_lock);
-	list_init (&ready_list);
-	list_init (&destruction_req);
-	list_init (&sleep_list);
-	list_init (&all_list); /* MLFQ all_list 초기화 */
-	
+    /* Init the global thread context */
+    lock_init (&tid_lock);
+    list_init (&ready_list);
+    list_init (&destruction_req);
+    list_init (&sleep_list);
+    list_init (&all_list);
 
-	/* Set up a thread structure for the running thread. */
-	initial_thread = running_thread ();
-	init_thread (initial_thread, "main", PRI_DEFAULT);
+    /* Set up a thread structure for the running thread. */
+    initial_thread = running_thread ();
+    init_thread (initial_thread, "main", PRI_DEFAULT);
 
-	/* 메인 스레드를 all_list에 포함시킨다. */
-	if (thread_mlfqs)
-	list_push_back(&all_list, &(initial_thread->all_elem));
+    /*— 여기서 초기 스레드의 FD 테이블 초기화 —*/
+    for (int i = 0; i < MAX_FD_NUM; i++)
+        initial_thread->fd_table[i] = NULL;
+    initial_thread->next_fd = 3;  /* 0,1,2은 STDIN/STDOUT/STDERR 예약 */
 
-	initial_thread->status = THREAD_RUNNING;
-	initial_thread->tid = allocate_tid ();
+    /* 메인 스레드를 all_list에 포함시킨다. (thread_mlfqs 여부와 상관없이) */
+    list_push_back (&all_list, &initial_thread->all_elem);
+
+    initial_thread->status = THREAD_RUNNING;
+    initial_thread->tid    = allocate_tid ();
 }
 
 /* Starts preemptive thread scheduling by enabling interrupts.
@@ -495,48 +496,43 @@ init_thread (struct thread *t, const char *name, int priority) {
     ASSERT (PRI_MIN <= priority && priority <= PRI_MAX);
     ASSERT (name != NULL);
 
-    /* 구조체 전체를 0으로 초기화해야 이후 세팅한 값들이 덮어써지지 않습니다 */
+    /* 구조체 전체를 0으로 초기화 */
     memset (t, 0, sizeof *t);
 
     t->status = THREAD_BLOCKED;
     strlcpy (t->name, name, sizeof t->name);
     t->tf.rsp = (uint64_t) t + PGSIZE - sizeof (void *);
 
-    /* MLFQ 사용 여부에 따라 우선순위 초기화 */
+    /* MLFQ 우선순위 설정 */
     if (thread_mlfqs) {
-        mlfqs_priority(t);
-        list_push_back(&all_list, &t->all_elem);
+        mlfqs_priority (t);
+        list_push_back (&all_list, &t->all_elem);
     } else {
         t->priority = priority;
     }
 
 #ifdef USERPROG
-    /* 파일 디스크립터 관리용 필드 초기화
-       0=stdin, 1=stdout 2 =stderr 이므로 3부터 시작 */
-    t->last_created_fd = 3;
-    list_init(&t->fd_list);
+    /* --- 리스트 대신 배열 기반 FD 테이블 초기화 --- */
+    for (int i = 0; i < MAX_FD_NUM; i++)
+        t->fd_table[i] = NULL;
+    t->next_fd = 2;  /* 0=stdin, 1=stdout 예약 */
 #endif
 
-    /* 우선순위 기부용 필드 초기화 */
+    /* 우선순위 기부용 초기화 */
     t->wait_on_lock = NULL;
-	t->exit_status = 0;
-	t->wait_on_lock = NULL;
-    list_init(&t->donations);
+    t->exit_status  = 0;
+    list_init (&t->donations);
 
-    /* 스택 오버플로우 검출용 매직 넘버 설정 */
+    /* 스택 오버플로우 검출용 매직 넘버 */
     t->magic = THREAD_MAGIC;
-
     t->init_priority = t->priority;
-	/* MLFQ : nice, recent_cpu 초기화 */
-	t->niceness = NICE_DEFAULT;
-    t->recent_cpu = RECENT_CPU_DEFAULT;
 
-	/* 프로세스 관계 초기화 */
-	list_init(&t->child_list);
-
-    /* MLFQ 관련 필드 초기화 */
+    /* MLFQ 필드 초기화 */
     t->niceness    = NICE_DEFAULT;
     t->recent_cpu  = RECENT_CPU_DEFAULT;
+
+    /* 자식 프로세스 리스트 초기화 */
+    list_init (&t->child_list);
 }
 /* Chooses and returns the next thread to be scheduled.  Should
    return a thread from the run queue, unless the run queue is
@@ -948,33 +944,39 @@ mlfqs_increment (void)
     thread_current()->recent_cpu = add_mixed(thread_current()->recent_cpu, 1);
 }
 
-int allocate_fd (struct file *file)
-{
-    // 파일 디스크립터 할당
-    struct file_descriptor *desc = malloc (sizeof *desc);
-    if (desc == NULL)
-      return -1;
-
-    // 현재 스레드의 fd_list 에 추가
-    struct thread *t = thread_current ();
-    desc->fd     = t->last_created_fd++;
-    desc->file_p = file;
-    list_push_back (&t->fd_list, &desc->fd_elem);
-
-    // 발급된 fd 반환
-    return desc->fd;
+/* 새 파일 디스크립터 할당 */
+int
+allocate_fd (struct file *f) {
+    struct thread *cur = thread_current ();
+    for (int i = 0; i < MAX_FD_NUM; i++) {
+        int fd = (cur->next_fd + i) % MAX_FD_NUM;
+        if (fd < 2)  /* 0,1번은 예약 */
+            continue;
+        if (cur->fd_table[fd] == NULL) {
+            cur->fd_table[fd] = f;
+            cur->next_fd = fd + 1;
+            return fd;
+        }
+    }
+    return -1;  /* 빈 슬롯 없음 */
 }
 
 
-struct file *find_file_by_fd(int fd) {
-    struct thread *cur = thread_current();
-    struct list_elem *e;
-    for (e = list_begin(&cur->fd_list); e != list_end(&cur->fd_list); e = list_next(e)) {
-        struct file_descriptor *d =
-            list_entry(e, struct file_descriptor, fd_elem);
-        if (d->fd == fd)
-            return d->file_p;
-    }
-    return NULL;  // 모든 요소 검사 후에도 매칭이 없으면 NULL 반환
+struct file *
+find_file_by_fd (int fd) {
+    struct thread *cur = thread_current ();
+    if (fd < 0 || fd >= MAX_FD_NUM)
+        return NULL;
+    return cur->fd_table[fd];
+}
+
+/* 파일 디스크립터 해제 */
+void
+deallocate_fd (int fd) {
+    struct thread *cur = thread_current ();
+    if (fd < 0 || fd >= MAX_FD_NUM || cur->fd_table[fd] == NULL)
+        return;
+    file_close (cur->fd_table[fd]);
+    cur->fd_table[fd] = NULL;
 }
 

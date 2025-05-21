@@ -80,10 +80,11 @@ syscall_handler (struct intr_frame *f UNUSED) {
 		f->R.rax = fork(f->R.rdi, f);
 		break;
 	case SYS_EXEC:
-		if (exec(f->R.rdi) == -1){
-			exit(-1);
-		}
-		break;
+   f->R.rax = exec(f->R.rdi);
+   /* exec이 –1을 반환하면 실행 실패이므로 exit로 빠져나감 */
+   if (f->R.rax == -1)
+     exit(-1);
+   break;
 	case SYS_WAIT:
 		f->R.rax = wait(f->R.rdi);
 		break;
@@ -276,26 +277,12 @@ struct lock filesys_lock;
 // Close file descriptor fd.
 // Use void file_close(struct file *file).
 void close(int fd) {
-    if (fd < 2)
-        return;  // stdin, stdout은 닫지 않음
+    /* stdin(0), stdout(1)은 닫지 않음 */
+   if (fd < STDOUT_FILENO + 1)
+        return;
 
-    struct thread *cur = thread_current();
-    struct list_elem *e, *next;
-
-    for (e = list_begin(&cur->fd_list); e != list_end(&cur->fd_list); e = next) {
-        next = list_next(e);
-
-        struct file_descriptor *desc = list_entry(e, struct file_descriptor, fd_elem);
-        if (desc->fd == fd) {
-            // 파일을 닫고 리스트에서 제거 및 메모리 해제
-            if (desc->file_p != NULL)
-                file_close(desc->file_p);
-
-            list_remove(e);
-            free(desc);
-            return;
-        }
-    }
+    /* 배열 기반 해제 함수 호출 */
+    deallocate_fd(fd);
 }
 
 int wait(tid_t pid){

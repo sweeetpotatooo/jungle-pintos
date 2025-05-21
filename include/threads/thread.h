@@ -123,9 +123,9 @@ struct thread {
     int recent_cpu;
     struct list_elem all_elem;          /* all_list 연결 elem */
 
-    /* File descriptor management (항상 사용) */
-    int last_created_fd;                /* 다음 발급할 FD 번호 */
-    struct list fd_list;                /* file_descriptor 리스트 */
+    /* file descriptor table */
+    struct file *fd_table[MAX_FD_NUM];  /* fd -> file* 매핑 */
+    int next_fd;                        /* 다음 탐색 시작 인덱스 */
 
 #ifdef USERPROG
 	/* Owned by userprog/process.c. */
@@ -209,4 +209,5 @@ void mlfqs_recalc_recent_cpu(void);
 void mlfqs_recalc_priority(void);
 int allocate_fd (struct file *file);
 struct file *find_file_by_fd(int fd);
+void deallocate_fd (int fd);
 #endif /* THREADS_THREAD_H */
