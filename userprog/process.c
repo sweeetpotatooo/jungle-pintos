@@ -86,85 +86,89 @@ initd (void *f_name) {
 
 /* 현재 프로세스를 `name`으로 복제합니다. 새 프로세스의 스레드 ID를 반환하거나,
  * 스레드를 생성할 수 없는 경우 TID_ERROR를 반환합니다.*/
+/* 현재 프로세스를 복제하여 새 프로세스(스레드)를 만듭니다. */
 tid_t
-process_fork (const char *name, struct intr_frame *if_ UNUSED) {
-	/* 현재 스레드를 새 스레드로 복제합니다.*/
+process_fork (const char *name, struct intr_frame *if_ UNUSED)
+{
+    struct thread *parent = thread_current ();
+    memcpy (&parent->parent_if, if_, sizeof (struct intr_frame));
 
-	struct thread *parent = thread_current();
-	memcpy(&parent->parent_if, if_, sizeof(struct intr_frame));
-	tid_t pid = thread_create (name, PRI_DEFAULT, __do_fork, parent);
+    /* 1) 자식 스레드 생성 */
+    tid_t pid = thread_create (name, PRI_DEFAULT, __do_fork, parent);
+    if (pid == TID_ERROR)
+        return TID_ERROR;
 
-	if (pid == TID_ERROR){
-		return TID_ERROR;
-	}
+    /* 2) 방금 만든 자식을 child_list에서 찾기 */
+    struct thread *child = NULL;
+    for (struct list_elem *e = list_begin (&parent->child_list);
+         e != list_end (&parent->child_list);
+         e = list_next (e))
+    {
+        struct thread *t = list_entry (e, struct thread, child_elem);
+        if (t->tid == pid) {
+            child = t;
+            break;
+        }
+    }
 
-	struct thread *child = NULL;
-	for (struct list_elem *e = list_begin(&parent->child_list);
-		e != list_end(&parent->child_list); e = list_next(e))
-	{
-		struct thread *t = list_entry(e, struct thread, child_elem);
-		if (t->tid == pid){
-			child = t;
-			break;
-		}
-	}
-	sema_down(&child->fork_sema);
-	return pid;
+    /* 3) 자식이 복사 작업을 끝낼 때까지 대기 */
+    sema_down (&child->fork_sema);          /* ← 올바른 대기 대상 */
+
+    /* 4) 자식이 실행을 시작하지 못했으면 fork 실패로 처리 */
+    if (child == NULL || child->exit_status == TID_ERROR)
+        return TID_ERROR;
+
+    /* 5) 성공이면 자식 TID 반환 */
+    return pid;
 }
 
 #ifndef VM
 /* Duplicate the parent's address space by passing this function to the
  * pml4_for_each. This is only for the project 2. */
+/* ---------- duplicate_pte() : 페이지 복사 Helper ---------- */
 static bool
-duplicate_pte (uint64_t *pte, void *va, void *aux) {
-	struct thread *current = thread_current ();
-	struct thread *parent = (struct thread *) aux;
-	void *parent_page;
-	void *newpage;
-	bool writable;
+duplicate_pte (uint64_t *pte, void *va, void *aux)
+{
+    struct thread *cur    = thread_current ();
+    struct thread *parent = (struct thread *) aux;
 
-	/* 1. TODO: If the parent_page is kernel page, then return immediately. */
-	if is_kernel_vaddr(va){
-		return true;
-	}
-	/* 2. Resolve VA from the parent's page map level 4. */
-	parent_page = pml4_get_page (parent->pml4, va);
-	if (parent_page == NULL){
-		return false;
-	}
-	/* 3. TODO: Allocate new PAL_USER page for the child and set result to
-	 *    TODO: NEWPAGE. */
-	newpage = palloc_get_page(PAL_USER | PAL_ZERO);
-	if (newpage == NULL){
-		return false;
-	}
-	/* 4. TODO: Duplicate parent's page to the new page and
-	 *    TODO: check whether parent's page is writable or not (set WRITABLE
-	 *    TODO: according to the result). */
-	memcpy(newpage, parent_page, PGSIZE);
-	writable = is_writable(pte);
-	/* 5. Add new page to child's page table at address VA with WRITABLE
-	 *    permission. */
-	if (!pml4_set_page (current->pml4, va, newpage, writable)) {
-		/* 6. TODO: if fail to insert page, do error handling. */
-		return false;
-	}
-	return true;
+    /* 커널 주소는 건너뜀 */
+    if (is_kernel_vaddr (va))
+        return true;
+
+    void *parent_page = pml4_get_page (parent->pml4, va);
+    if (parent_page == NULL)
+        return false;
+
+    void *newpage = palloc_get_page (PAL_USER | PAL_ZERO);
+    if (newpage == NULL)
+        return false;
+
+    memcpy (newpage, parent_page, PGSIZE);
+    bool writable = is_writable (pte);
+
+    if (!pml4_set_page (cur->pml4, va, newpage, writable))
+    {
+        palloc_free_page (newpage);      /* ★ 실패 시 페이지 반납 */
+        return false;
+    }
+    return true;
 }
+
 #endif
 
 /* 부모의 실행 컨텍스트를 복사하는 스레드 함수입니다.
 * 힌트) parent->tf는 프로세스의 사용자 영역 컨텍스트를 유지하지 않습니다.
 * 즉, process_fork의 두 번째 인수를 이 함수에 전달해야 합니다. */
 static void
-__do_fork (void *aux) {
+__do_fork (void *aux)
+{
     struct intr_frame if_;
-    struct thread *parent = (struct thread *) aux;
-    struct thread *current = thread_current ();
-    struct intr_frame *parent_if = &parent->parent_if;
+    struct thread *parent   = (struct thread *) aux;
+    struct thread *current  = thread_current ();
+    struct intr_frame *p_if = &parent->parent_if;
 
-    /* 1. CPU 컨텍스트 복사 */
-    memcpy (&if_, parent_if, sizeof (struct intr_frame));
+    memcpy (&if_, p_if, sizeof if_);
     if_.R.rax = 0;
 
     /* 2. 새로운 페이지 테이블 생성 및 복사 */
@@ -181,29 +185,30 @@ __do_fork (void *aux) {
         goto error;
 #endif
 
+    process_init ();
     /* 3. 파일 디스크립터 복사 (배열 기반) */
-    for (int fd = 2; fd < MAX_FD_NUM; fd++) {
-        struct file *parent_file = parent->fd_table[fd];
-        if (parent_file == NULL)
-            continue;
+  for (int fd = 2; fd < MAX_FD_NUM; fd++) {
+        struct file *pf = parent->fd_table[fd];
+        if (pf == NULL) continue;
 
-        struct file *dup_file = file_duplicate(parent_file);
-        if (dup_file == NULL)
-            continue;
-
-        current->fd_table[fd] = dup_file;
+        struct file *dup = file_duplicate (pf);
+        if (dup == NULL)                      /* ★ CHANGED – OOM 대응 */
+            goto error;
+        current->fd_table[fd] = dup;
         if (current->next_fd <= fd)
             current->next_fd = fd + 1;
     }
-
-    /* 4. 프로세스 초기화 및 부모에 로드 완료 알림 */
-    process_init ();
+	if_.R.rax = 0;
     sema_up (&current->fork_sema);
-
-    /* 5. 사용자 문맥으로 복귀 */
     do_iret (&if_);
 
-error:
+error:                                          /* ★ CHANGED – 롤백 추가 */
+    for (int fd = 2; fd < MAX_FD_NUM; fd++) {
+        if (current->fd_table[fd] != NULL) {
+            file_close (current->fd_table[fd]);
+            current->fd_table[fd] = NULL;
+        }
+    }
     current->exit_status = TID_ERROR;
     sema_up (&current->fork_sema);
     thread_exit ();
@@ -340,10 +345,11 @@ process_exit (void) {
     }
 
     /* 2) 실행 중이던 파일 닫기 */
-    if (curr->running != NULL) {
-        file_close(curr->running);
-        curr->running = NULL;
-    }
+if (curr->running) {
+    file_allow_write (curr->running);
+    file_close (curr->running);
+    curr->running = NULL;
+}
 
     /* 3) 나머지 리소스 해제 */
     process_cleanup ();
@@ -566,6 +572,10 @@ load (const char *file_name, struct intr_frame *if_) {
 done:
 	/* We arrive here whether the load is successful or not. */
 	// file_close (file); 
+	    if (!success && file != NULL) {          /* ★ CHANGED – 실패 시 close */
+        file_close (file);
+        file = NULL;
+    }
 	return success;
 }
 

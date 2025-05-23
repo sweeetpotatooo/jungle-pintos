@@ -125,13 +125,19 @@ void halt(void) {
 	power_off();
 }
 
-void exit(int status){
-	struct thread *cur = thread_current();
-    cur->exit_status = status;
-	printf("%s: exit(%d)\n", thread_name(), status);
- 
-	sema_up(&cur->wait_sema);
-	thread_exit();	
+void
+exit (int status) {
+  struct thread *cur = thread_current ();
+
+  /* 1) exit_status 저장 & 로그 */
+  cur->exit_status = status;
+  printf("%s: exit(%d)\n", thread_name(), status);
+
+  /* 2) 자원 정리 + 부모 동기화까지 한방에! */
+  process_exit ();
+
+  /* 3) 스레드(프로세스) 완전 종료 */
+  thread_exit ();
 }
 
 int write(int fd, const void *buffer, unsigned size) {
@@ -143,7 +149,7 @@ int write(int fd, const void *buffer, unsigned size) {
 		return size;
 	}
 
-	if (fd == STDIN_FILENO || fd < 2)
+	if (fd == STDIN_FILENO || fd < 3)
 		return -1;
 
 	struct file *f = find_file_by_fd(fd);
@@ -168,27 +174,48 @@ bool remove (const char *file) {
 	return filesys_remove(file);
 }
 
-int open (const char *file) {
-	check_address(file); // 주소 유효한지 체크
-	if (file == NULL) {
-		return -1;
-	}
-	lock_acquire(&filesys_lock);
-	struct file *opened_file = filesys_open(file); // 파일 열기 시도, 열려고 하는 파일 정보 filesys_open()으로 받기
-	if (opened_file == NULL) {
-      return -1;
-  	} 
-	int fd = allocate_fd(opened_file); // 만들어진 파일 스레드 내 fdt 테이블에 추가	
-	// 만약 파일을 열 수 없으면 -1
-	if (fd == -1) {
-		file_close(opened_file);
-	}
-	lock_release(&filesys_lock);
-	return fd;
+int
+open (const char *file)
+{
+    check_address (file);
+    if (file == NULL)
+        return -1;
+
+    lock_acquire (&filesys_lock);
+    struct file *opened_file = filesys_open (file);
+    if (opened_file == NULL) {
+        lock_release (&filesys_lock);      /* ★ CHANGED – 실패 경로에서도 락 해제 */
+        return -1;
+    }
+
+    int fd = allocate_fd (opened_file);
+    if (fd == -1) {                         /* FD 테이블이 가득 찼을 때 */
+        file_close (opened_file);
+        lock_release (&filesys_lock);
+        return -1;                          /* ★ CHANGED – early-return */
+    }
+
+    lock_release (&filesys_lock);
+    return fd;
 }
 
-tid_t fork (const char *thread_name, struct intr_frame *f){
-	return process_fork(thread_name, f);
+tid_t
+fork (const char *thread_name, struct intr_frame *f)
+{
+    /* fork 요청 직전 로그 */
+    //printf("[fork ▶] 요청: name=\"%s\", parent_tid=%d\n",
+          //  thread_name,
+          //  thread_current()->tid);
+
+    /* 실제 fork 수행 */
+    tid_t child_tid = process_fork(thread_name, f);
+
+    /* fork 반환 직후 로그 */
+    //printf("[fork ◀] 반환: child_tid=%d (parent_tid=%d)\n",
+          //  child_tid,
+          //  thread_current()->tid);
+
+    return child_tid;
 }
 
 int read(int fd, void *buffer, unsigned size) {
@@ -285,6 +312,19 @@ void close(int fd) {
     deallocate_fd(fd);
 }
 
-int wait(tid_t pid){
-	return process_wait(pid);
-};
+int
+wait (tid_t pid)
+{
+    // printf("[wait ▶] 요청: child_tid=%d, parent_tid=%d\n",
+    //        pid,
+    //        thread_current()->tid);
+
+    int exit_code = process_wait(pid);
+
+    // printf("[wait ◀] 반환: child_tid=%d → exit_code=%d, parent_tid=%d\n",
+    //        pid,
+    //        exit_code,
+    //        thread_current()->tid);
+
+    return exit_code;
+}

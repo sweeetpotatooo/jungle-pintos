@@ -11,12 +11,6 @@
 #include "vm/vm.h"
 #endif
 
-struct file_descriptor {
-    int fd;                  /* 할당된 FD 번호 */
-    struct file *file_p;     /* 실제 파일 포인터 */
-    struct list_elem fd_elem;/* fd_list 에 들어갈 elem */
-};
-
 
 /* States in a thread's life cycle. */
 enum thread_status {
@@ -31,7 +25,7 @@ enum thread_status {
 typedef int tid_t;
 #define MAX_FD_NUM 128
 #define TID_ERROR ((tid_t) -1)          /* Error value for tid_t. */
-
+#define FDT_PAGES 3
 /* Thread priorities. */
 #define PRI_MIN 0                       /* Lowest priority. */
 #define PRI_DEFAULT 31                  /* Default priority. */
@@ -125,8 +119,11 @@ struct thread {
 
     /* file descriptor table */
     struct file *fd_table[MAX_FD_NUM];  /* fd -> file* 매핑 */
+    int fd_idx;
     int next_fd;                        /* 다음 탐색 시작 인덱스 */
 
+
+    bool forked;
 #ifdef USERPROG
 	/* Owned by userprog/process.c. */
 	struct list child_list;
