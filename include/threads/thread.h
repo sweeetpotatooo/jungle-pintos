@@ -42,6 +42,10 @@ typedef int tid_t;
 #define RECENT_CPU_DEFAULT 0
 #define LOAD_AVG_DEFAULT 0
 
+#define FDT_PAGES     3                     // test `multi-oom` 테스트용
+#define FDCOUNT_LIMIT FDT_PAGES * (1 << 9)  // 엔트리가 512개 인 이유: 페이지 크기 4kb / 파일 포인터 8byte
+
+
 /* A kernel thread or user process.
  *
  * Each thread structure is stored in its own 4 kB page.  The
@@ -107,8 +111,6 @@ struct thread {
     int priority;                       /* Priority. */
     int64_t weakeup_tick;               /* 깨어날 tick */
 
-	int exit_status;
-
     /* Shared between thread.c and synch.c. */
     struct list_elem elem;              /* List element. */
 
@@ -123,29 +125,30 @@ struct thread {
     int recent_cpu;
     struct list_elem all_elem;          /* all_list 연결 elem */
 
-    /* File descriptor management (항상 사용) */
-    int last_created_fd;                /* 다음 발급할 FD 번호 */
-    struct list fd_list;                /* file_descriptor 리스트 */
-
 #ifdef USERPROG
 	/* Owned by userprog/process.c. */
 	struct list child_list;
 	struct list_elem child_elem;
 	struct thread *parent;
     struct file *running;
-	bool already_waited;
+
 	struct intr_frame parent_if;
-    /* Owned by userprog/process.c. */
+
+	int exit_status;
     uint64_t *pml4;                     /* 페이지 맵 레벨 4 포인터 */
+
+    struct semaphore wait_sema;
+	struct semaphore exit_sema;
+	struct semaphore fork_sema;
+    /* File descriptor management (항상 사용) */
+    int last_created_fd;                /* 다음 발급할 FD 번호 */
+    struct list fd_list;                /* file_descriptor 리스트 */
 #endif
 
 #ifdef VM
     struct supplemental_page_table spt; /* 가상 메모리 테이블 */
 #endif
-	struct semaphore wait_sema;
-	struct semaphore free_sema;
-	struct semaphore fork_sema;
-
+	
     /* Owned by thread.c. */
     struct intr_frame tf;               /* 스위칭 정보 */
     unsigned magic;                     /* Stack overflow 검출 */
