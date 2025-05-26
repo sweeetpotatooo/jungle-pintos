@@ -143,8 +143,7 @@ file_length (struct file *file) {
 	return inode_length (file->inode);
 }
 
-/* Sets the current position in FILE to NEW_POS bytes from the
- * start of the file. */
+/* file에서 현재 위치를 파일의 시작으로부터 new_pos 바이트로 설정한다 */
 void
 file_seek (struct file *file, off_t new_pos) {
 	ASSERT (file != NULL);

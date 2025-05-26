@@ -5,6 +5,8 @@
 #include <list.h>
 #include <stdint.h>
 #include "threads/interrupt.h"
+#include "threads/synch.h"
+#include "filesys/file.h"   /* struct file 정의 */
 #ifdef VM
 #include "vm/vm.h"
 #endif
@@ -21,8 +23,9 @@ enum thread_status {
 /* Thread identifier type.
    You can redefine this to whatever type you like. */
 typedef int tid_t;
+#define MAX_FD_NUM 128
 #define TID_ERROR ((tid_t) -1)          /* Error value for tid_t. */
-
+#define FDT_PAGES 3
 /* Thread priorities. */
 #define PRI_MIN 0                       /* Lowest priority. */
 #define PRI_DEFAULT 31                  /* Default priority. */
@@ -91,78 +94,94 @@ typedef int tid_t;
  * ready state is on the run queue, whereas only a thread in the
  * blocked state is on a semaphore wait list. */
 struct thread {
-	/* Owned by thread.c. */
-	tid_t tid;                          /* Thread identifier. */
-	enum thread_status status;          /* Thread state. */
-	char name[16];                      /* Name (for debugging purposes). */
-	int priority;                       /* Priority. */
-	int64_t weakeup_tick;				/* wake up time (깨어나야 할 시간) */
+    /* Owned by thread.c. */
+    tid_t tid;                          /* Thread identifier. */
+    enum thread_status status;          /* Thread state. */
+    char name[16];                      /* Name (for debugging). */
+    int priority;                       /* Priority. */
+    int64_t weakeup_tick;               /* 깨어날 tick */
 
-int exit_status;
+	int exit_status;
 
-	/* Shared between thread.c and synch.c. */
-	struct list_elem elem;              /* List element. */
+    /* Shared between thread.c and synch.c. */
+    struct list_elem elem;              /* List element. */
 
-	/* Priority Donation Field */
-	int init_priority; /* 원래 우선순위 */
-	struct list donations; /* 이 스레드에게 우선순위를 기부한 스레드의 목록 */
-	struct list_elem donations_elem; /* 다른 스레드의 donations 리스트에 포함되기 위한 요소 */
-	struct lock *wait_on_lock; /* 이 스레드가 기다리고 있는 락 */
+    /* Priority donation. */
+    int init_priority;                  /* 원래 우선순위 */
+    struct list donations;              /* 기부된 우선순위 리스트 */
+    struct list_elem donations_elem;    /* donations 리스트용 elem */
+    struct lock *wait_on_lock;          /* 기다리는 락 포인터 */
 
-	/* MLFQ */
-	int niceness;
-	int recent_cpu;
-	struct list_elem all_elem; /** project1-Advanced Scheduler */
-	
+    /* MLFQ scheduling fields. */
+    int niceness;
+    int recent_cpu;
+    struct list_elem all_elem;          /* all_list 연결 elem */
+
+    /* file descriptor table */
+    struct file *fd_table[MAX_FD_NUM];  /* fd -> file* 매핑 */
+    int fd_idx;
+    int next_fd;                        /* 다음 탐색 시작 인덱스 */
+
+
+    bool forked;
 #ifdef USERPROG
 	/* Owned by userprog/process.c. */
-	uint64_t *pml4;                     /* Page map level 4 */
+	struct list child_list;
+	struct list_elem child_elem;
+	struct thread *parent;
+    struct file *running;
+	bool already_waited;
+	struct intr_frame parent_if;
+    /* Owned by userprog/process.c. */
+    uint64_t *pml4;                     /* 페이지 맵 레벨 4 포인터 */
 #endif
+
 #ifdef VM
-	/* Table for whole virtual memory owned by thread. */
-	struct supplemental_page_table spt;
+    struct supplemental_page_table spt; /* 가상 메모리 테이블 */
 #endif
+	struct semaphore wait_sema;
+	struct semaphore free_sema;
+	struct semaphore fork_sema;
 
-	/* Owned by thread.c. */
-	struct intr_frame tf;               /* Information for switching */
-	unsigned magic;                     /* Detects stack overflow. */
+    /* Owned by thread.c. */
+    struct intr_frame tf;               /* 스위칭 정보 */
+    unsigned magic;                     /* Stack overflow 검출 */
 };
-
-
 
 /* If false (default), use round-robin scheduler.
    If true, use multi-level feedback queue scheduler.
    Controlled by kernel command-line option "-o mlfqs". */
 extern bool thread_mlfqs;
 
-void thread_init (void);
-void thread_start (void);
+void thread_init(void);
+void thread_start(void);
 
-void thread_tick (void);
-void thread_print_stats (void);
+void thread_tick(void);
+void thread_print_stats(void);
 
-typedef void thread_func (void *aux);
-tid_t thread_create (const char *name, int priority, thread_func *, void *);
+typedef void thread_func(void *aux);
+tid_t thread_create(const char *name, int priority,
+                    thread_func *, void *);
 
-void thread_block (void);
-void thread_unblock (struct thread *);
+void thread_block(void);
+void thread_unblock(struct thread *);
 
-struct thread *thread_current (void);
-tid_t thread_tid (void);
-const char *thread_name (void);
+struct thread *thread_current(void);
+tid_t thread_tid(void);
+const char *thread_name(void);
 
-void thread_exit (void) NO_RETURN;
-void thread_yield (void);
+void thread_exit(void) NO_RETURN;
+void thread_yield(void);
 
-int thread_get_priority (void);
-void thread_set_priority (int);
+int thread_get_priority(void);
+void thread_set_priority(int);
 
-int thread_get_nice (void);
-void thread_set_nice (int);
-int thread_get_recent_cpu (void);
-int thread_get_load_avg (void);
+int thread_get_nice(void);
+void thread_set_nice(int);
+int thread_get_recent_cpu(void);
+int thread_get_load_avg(void);
 
-void do_iret (struct intr_frame *tf);
+void do_iret(struct intr_frame *tf);
 
 void thread_sleep(int64_t ticks);
 void thread_awake(int64_t ticks);
@@ -171,19 +190,21 @@ int64_t get_next_tick_to_awake(void);
 
 void donation_priority(void);
 
-void cmp_nowNfirst (void);
-bool cmp_priority (const struct list_elem *a, const struct list_elem *b);
+void cmp_nowNfirst(void);
+bool cmp_priority(const struct list_elem *a,
+                  const struct list_elem *b);
 
-/* priority scheduling */
-void donation_priority(void);
-void remove_with_lock(struct lock *lock);
+/* Priority scheduling functions. */
+void remove_with_lock(struct lock *);
 void refresh_priority(void);
 
-void mlfqs_priority(struct thread *t);
-void mlfqs_recent_cpu(struct thread *t);
+void mlfqs_priority(struct thread *);
+void mlfqs_recent_cpu(struct thread *);
 void mlfqs_load_avg(void);
 void mlfqs_increment(void);
 void mlfqs_recalc_recent_cpu(void);
 void mlfqs_recalc_priority(void);
-
-#endif /* threads/thread.h */
+int allocate_fd (struct file *file);
+struct file *find_file_by_fd(int fd);
+void deallocate_fd (int fd);
+#endif /* THREADS_THREAD_H */
