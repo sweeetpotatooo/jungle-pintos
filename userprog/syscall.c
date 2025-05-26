@@ -18,12 +18,12 @@ void syscall_handler (struct intr_frame *);
 bool create (const char *file, unsigned initial_size);
 tid_t fork (const char *thread_name, struct intr_frame *f);
 bool remove (const char *file);
-int exec (const char *file_name);
+int exec(const char *cmd_line);
 int filesize(int fd) ;
 void close (int fd);
 int wait(tid_t pid);
 void seek(int fd, unsigned position);
-unsigned tell(int fd);
+int tell(int fd);
 
 /* System call.
  *
@@ -41,15 +41,13 @@ unsigned tell(int fd);
 #define STDIN_FILENO 0
 #define STDOUT_FILENO 1
 
-void check_address(void *addr)
+void 
+check_address (void *addr)
 {
-    // kernel VM 못가게, 할당된 page가 존재하도록(빈공간접근 못하게)
-    struct thread *cur = thread_current();
-    if (is_kernel_vaddr(addr) || pml4_get_page(cur->pml4, addr) == NULL)
-    {
+    if (is_kernel_vaddr(addr) || addr == NULL || pml4_get_page(thread_current()->pml4, addr) == NULL)
         exit(-1);
-    }
 }
+
 
 void
 syscall_init (void) {
@@ -80,11 +78,8 @@ syscall_handler (struct intr_frame *f UNUSED) {
 		f->R.rax = fork(f->R.rdi, f);
 		break;
 	case SYS_EXEC:
-   f->R.rax = exec(f->R.rdi);
-   /* exec이 –1을 반환하면 실행 실패이므로 exit로 빠져나감 */
-   if (f->R.rax == -1)
-     exit(-1);
-   break;
+		f->R.rax = exec(f->R.rdi);
+		break;
 	case SYS_WAIT:
 		f->R.rax = wait(f->R.rdi);
 		break;
@@ -116,8 +111,7 @@ syscall_handler (struct intr_frame *f UNUSED) {
 		close(f->R.rdi);
 		break;
 	default:
-		thread_exit();
-		break;
+		exit(-1);
 	}
 }
 
@@ -125,41 +119,38 @@ void halt(void) {
 	power_off();
 }
 
-void
-exit (int status) {
-  struct thread *cur = thread_current ();
-
-  /* 1) exit_status 저장 & 로그 */
-  cur->exit_status = status;
-  printf("%s: exit(%d)\n", thread_name(), status);
-
-  /* 2) 자원 정리 + 부모 동기화까지 한방에! */
-  process_exit ();
-
-  /* 3) 스레드(프로세스) 완전 종료 */
-  thread_exit ();
+void exit(int status){
+    struct thread *t = thread_current();
+    t->exit_status = status;
+    printf("%s: exit(%d)\n", t->name, t->exit_status); // Process Termination Message
+    thread_exit();
 }
 
-int write(int fd, const void *buffer, unsigned size) {
-	check_address(buffer);
-	check_address((char *)buffer + size - 1);
 
-	if (fd == STDOUT_FILENO) {
-		putbuf(buffer, size);
-		return size;
-	}
+int write(int fd, const void *buffer, unsigned length) 
+{
+    check_address(buffer);
 
-	if (fd == STDIN_FILENO || fd < 3)
-		return -1;
+    off_t bytes = -1;
 
-	struct file *f = find_file_by_fd(fd);
-	if (f == NULL)
-		return -1;
+    if (fd <= 0)  // stdin에 쓰려고 할 경우 & fd 음수일 경우
+        return -1;
 
-	lock_acquire(&filesys_lock);
-	int ret = file_write(f, buffer, size);
-	lock_release(&filesys_lock);
-	return ret;
+    if (fd < 3) {  // 1(stdout) * 2(stderr) -> console로 출력
+        putbuf(buffer, length);
+        return length;
+    }
+
+    struct file *file = process_get_file(fd);
+
+    if (file == NULL)
+        return -1;
+
+    lock_acquire(&filesys_lock);
+    bytes = file_write(file, buffer, length);
+    lock_release(&filesys_lock);
+
+    return bytes;
 }
 
 
@@ -174,28 +165,19 @@ bool remove (const char *file) {
 	return filesys_remove(file);
 }
 
-int
-open (const char *file)
+int open(const char *file) 
 {
-    check_address (file);
-    if (file == NULL)
+    check_address(file);
+    struct file *newfile = filesys_open(file);
+
+    if (newfile == NULL)
         return -1;
 
-    lock_acquire (&filesys_lock);
-    struct file *opened_file = filesys_open (file);
-    if (opened_file == NULL) {
-        lock_release (&filesys_lock);      /* ★ CHANGED – 실패 경로에서도 락 해제 */
-        return -1;
-    }
+    int fd = process_add_file(newfile);
 
-    int fd = allocate_fd (opened_file);
-    if (fd == -1) {                         /* FD 테이블이 가득 찼을 때 */
-        file_close (opened_file);
-        lock_release (&filesys_lock);
-        return -1;                          /* ★ CHANGED – early-return */
-    }
+    if (fd == -1)
+        file_close(newfile);
 
-    lock_release (&filesys_lock);
     return fd;
 }
 
@@ -218,113 +200,112 @@ fork (const char *thread_name, struct intr_frame *f)
     return child_tid;
 }
 
-int read(int fd, void *buffer, unsigned size) {
-	check_address(buffer);
-	check_address((char *)buffer + size - 1);
+int read(int fd, void *buffer, unsigned length) 
+{
+    check_address(buffer);
 
-	if (fd == STDOUT_FILENO)
-		return -1;
+    if (fd == 0) {  // 0(stdin) -> keyboard로 직접 입력
+        int i = 0;  // 쓰레기 값 return 방지
+        char c;
+        unsigned char *buf = buffer;
 
-	if (fd == STDIN_FILENO) {
-		unsigned char *buf = buffer;
-		for (unsigned i = 0; i < size; i++)
-			buf[i] = input_getc();
-		return size;
-	}
+        for (; i < length; i++) {
+            c = input_getc();
+            *buf++ = c;
+            if (c == '\0')
+                break;
+        }
 
-	struct file *f = find_file_by_fd(fd);
-	if (f == NULL)
-		return -1;
+        return i;
+    }
+    // 그 외의 경우
+    if (fd < 3)  // stdout, stderr를 읽으려고 할 경우 & fd가 음수일 경우
+        return -1;
 
-	lock_acquire(&filesys_lock);
-	int ret = file_read(f, buffer, size);
-	lock_release(&filesys_lock);
-	return ret;
+    struct file *file = process_get_file(fd);
+    off_t bytes = -1;
+
+    if (file == NULL)  // 파일이 비어있을 경우
+        return -1;
+
+    lock_acquire(&filesys_lock);
+    bytes = file_read(file, buffer, length);
+    lock_release(&filesys_lock);
+
+    return bytes;
 }
+
 
 
 // 파일 디스크럽터를 사용하여 파일의 크기를 가져오는 함수
 int filesize(int fd) {
-    struct file *file = find_file_by_fd(fd);	// 파일 포인터
+    struct file *file = process_get_file(fd);
 
-	if (file == NULL) {
-		return -1;
-	}
+    if (file == NULL)
+        return -1;
 
-	return file_length(file);	// 파일의 크기를 반환함
+    return file_length(file);
 }
 
-int exec (const char *file_name){
-	check_address(file_name);
+int exec(const char *cmd_line) 
+{
+    check_address(cmd_line);
 
-	// file_name의 길이를 구한다.
-    // strlen은 널 문자를 포함하지 않기 때문에 널 문자 포함을 위해 1을 더해준다.
-	int size = strlen(file_name) + 1;
-	// 새로운 페이지를 할당받고 0으로 초기화한다.(PAL_ZERO)
-    // 여기에 file_name을 복사할 것이다
-	char *fn_copy = palloc_get_page(PAL_ZERO);
-	if ((fn_copy) == NULL) {
-		exit(-1);
-	}
-	// file_name 문자열을 file_name_size만큼 fn_copy에 복사한다
-	strlcpy(fn_copy, file_name, size);
+    off_t size = strlen(cmd_line) + 1;
+    char *cmd_copy = palloc_get_page(PAL_ZERO);
 
-	// process_exec 호출, 여기서 인자 파싱 및 file load 등등이 일어난다.
-    // file 실행이 실패했다면 -1을 리턴한다.
-	if (process_exec(fn_copy) == -1) {
-		return -1;
-	}
+    if (cmd_copy == NULL)
+        return -1;
 
-	NOT_REACHED();
-	return 0;
+    memcpy(cmd_copy, cmd_line, size);
+
+    if (process_exec(cmd_copy) == -1)
+        return -1;
+
+    return 0;  // process_exec 성공시 리턴 값 없음 (do_iret)
 }
 
 // 열려있는 파일 디스크립터 fd의 파일 포인터를 position으로 이동시키는 함수
-void seek(int fd, unsigned position) {
-	struct file *file = find_file_by_fd(fd);	// 파일 포인터
+void seek(int fd, unsigned position) 
+{
+    struct file *file = process_get_file(fd);
 
-	if (file != NULL) {
-		file_seek(file, position);
-	}
+    if (fd < 3 || file == NULL)
+        return;
+
+    file_seek(file, position);
 }
 
 // fd에서 다음에 읽거나 쓸 바이트의 위치를 반환하는 함수
-unsigned tell(int fd) {
-	struct file *file = find_file_by_fd(fd);
+int tell(int fd) 
+{
+    struct file *file = process_get_file(fd);
 
-	if (file == NULL) {
-		return -1;
-	}
+    if (fd < 3 || file == NULL)
+        return -1;
 
-	return file_tell(file);
+    return file_tell(file);
 }
 
 struct lock filesys_lock;
 
 // Close file descriptor fd.
 // Use void file_close(struct file *file).
-void close(int fd) {
-    /* stdin(0), stdout(1)은 닫지 않음 */
-   if (fd < STDOUT_FILENO + 1)
+void 
+close(int fd) 
+{
+    struct file *file = process_get_file(fd);
+
+    if (fd < 3 || file == NULL)
         return;
 
-    /* 배열 기반 해제 함수 호출 */
-    deallocate_fd(fd);
+    process_close_file(fd);
 }
+
+
 
 int
 wait (tid_t pid)
 {
-    // printf("[wait ▶] 요청: child_tid=%d, parent_tid=%d\n",
-    //        pid,
-    //        thread_current()->tid);
-
-    int exit_code = process_wait(pid);
-
-    // printf("[wait ◀] 반환: child_tid=%d → exit_code=%d, parent_tid=%d\n",
-    //        pid,
-    //        exit_code,
-    //        thread_current()->tid);
-
-    return exit_code;
+return process_wait(pid);
 }
