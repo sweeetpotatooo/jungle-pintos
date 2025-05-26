@@ -228,33 +228,6 @@ thread_create (const char *name, int priority,
 	init_thread (t, name, priority);
 	tid = t->tid = allocate_tid ();
 
-#ifdef USERPROG
-	/* 파일 디스크립터 리스트 초기화 */
-	list_init(&t->fd_list);
-	t->last_created_fd = 3; // stdin(0), stdout(1), stderr(2) 이후부터 할당
-	
-	for (int i = 0; i < 3; i++) {
-		struct file_descriptor *fd_entry = malloc(sizeof(struct file_descriptor));
-		if (fd_entry == NULL) {
-			/* 이전에 할당된 fd_entry들 해제 */
-			while (!list_empty(&t->fd_list)) {
-				struct list_elem *e = list_pop_front(&t->fd_list);
-				struct file_descriptor *cleanup_fd = list_entry(e, struct file_descriptor, fd_elem);
-				free(cleanup_fd);
-			}
-			palloc_free_page(t);
-			return TID_ERROR;
-		}
-
-		fd_entry->fd = i;
-		fd_entry->file_p = NULL;  // 실제 파일이 없으므로 NULL
-		list_push_back(&t->fd_list, &fd_entry->fd_elem);
-	}
-	t->exit_status = 0;
-	list_push_back(&curr->child_list, &t->child_elem);
-
-#endif
-
 	/* Call the kernel_thread if it scheduled.
 	 * Note) rdi is 1st argument, and rsi is 2nd argument. */
 	t->tf.rip = (uintptr_t) kernel_thread;
@@ -265,8 +238,13 @@ thread_create (const char *name, int priority,
 	t->tf.ss = SEL_KDSEG;
 	t->tf.cs = SEL_KCSEG;
 	t->tf.eflags = FLAG_IF;
+	t->already_waited = false;
+	sema_init(&t->wait_sema, 0);
+	sema_init(&t->free_sema, 0);
+	sema_init(&t->fork_sema, 0);
 	t->parent = curr;
 
+	list_push_back(&curr->child_list, &t->child_elem);
 	/* Add to run queue. */
 	thread_unblock (t);
 	/* 현재와 가장 높은 우선순위 비교후 현재보다 우선순위가 높다면 양보 */
@@ -356,7 +334,12 @@ thread_exit (void) {
 	list_remove(&thread_current()->all_elem);
 	/* Just set our status to dying and schedule another process.
 	We will be destroyed during the call to schedule_tail(). */
+
 	intr_disable ();
+	sema_down(&curr->free_sema);
+
+	intr_yield_on_return();
+
 	do_schedule (THREAD_DYING);
 	NOT_REACHED ();
 }
@@ -531,11 +514,12 @@ init_thread (struct thread *t, const char *name, int priority) {
         t->priority = priority;
     }
 
-	list_init(&t->child_list);
-	sema_init(&t->wait_sema, 0);
-	sema_init(&t->exit_sema, 0);
-	sema_init(&t->fork_sema, 0);
-	t->running = NULL;
+#ifdef USERPROG
+    /* 파일 디스크립터 관리용 필드 초기화
+       0=stdin, 1=stdout 2 =stderr 이므로 3부터 시작 */
+    t->last_created_fd = 3;
+    list_init(&t->fd_list);
+#endif
 
     /* 우선순위 기부용 필드 초기화 */
     t->wait_on_lock = NULL;
@@ -547,6 +531,12 @@ init_thread (struct thread *t, const char *name, int priority) {
     t->magic = THREAD_MAGIC;
 
     t->init_priority = t->priority;
+	/* MLFQ : nice, recent_cpu 초기화 */
+	t->niceness = NICE_DEFAULT;
+    t->recent_cpu = RECENT_CPU_DEFAULT;
+
+	/* 프로세스 관계 초기화 */
+	list_init(&t->child_list);
 
     /* MLFQ 관련 필드 초기화 */
     t->niceness    = NICE_DEFAULT;
@@ -812,13 +802,8 @@ void cmp_nowNfirst (void){
  
     struct thread *th = list_entry(list_front(&ready_list), struct thread, elem);
  
-	if (thread_current()->priority < th->priority) {
-        /** Project 2: Panic 방지 */
-        if (intr_context())
-            intr_yield_on_return();
-        else
-            thread_yield();
-    }
+    if (!intr_context() && thread_get_priority() < th->priority)
+        thread_yield();
 }
 
 void donation_priority(void){
@@ -976,6 +961,7 @@ int allocate_fd (struct file *file)
 
     // 현재 스레드의 fd_list 에 추가
     struct thread *t = thread_current ();
+
     desc->fd     = t->last_created_fd++;
     desc->file_p = file;
     list_push_back (&t->fd_list, &desc->fd_elem);
