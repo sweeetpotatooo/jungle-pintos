@@ -181,23 +181,8 @@ int open(const char *file)
     return fd;
 }
 
-tid_t
-fork (const char *thread_name, struct intr_frame *f)
-{
-    /* fork 요청 직전 로그 */
-    //printf("[fork ▶] 요청: name=\"%s\", parent_tid=%d\n",
-          //  thread_name,
-          //  thread_current()->tid);
-
-    /* 실제 fork 수행 */
-    tid_t child_tid = process_fork(thread_name, f);
-
-    /* fork 반환 직후 로그 */
-    //printf("[fork ◀] 반환: child_tid=%d (parent_tid=%d)\n",
-          //  child_tid,
-          //  thread_current()->tid);
-
-    return child_tid;
+tid_t fork (const char *thread_name, struct intr_frame *f){
+	return process_fork(thread_name, f);
 }
 
 int read(int fd, void *buffer, unsigned length) 
@@ -303,9 +288,6 @@ close(int fd)
 }
 
 
-
-int
-wait (tid_t pid)
-{
-return process_wait(pid);
-}
+int wait(tid_t pid){
+	return process_wait(pid);
+};

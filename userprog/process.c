@@ -63,7 +63,6 @@ process_create_initd (const char *file_name) {
 
 	/* Create a new thread to execute FILE_NAME. */
 	tid = thread_create (file_name, PRI_DEFAULT, initd, fn_copy);	// initd를 타고 들어가면
-	tid = thread_create (file_name, PRI_DEFAULT, initd, fn_copy);	// initd를 타고 들어가면
 	if (tid == TID_ERROR)
 		palloc_free_page (fn_copy);
 	return tid;
@@ -111,12 +110,13 @@ tid_t process_fork (const char *name, struct intr_frame *if_ UNUSED) {
 #ifndef VM
 /* Duplicate the parent's address space by passing this function to the
  * pml4_for_each. This is only for the project 2. */
-/* ---------- duplicate_pte() : 페이지 복사 Helper ---------- */
 static bool
-duplicate_pte (uint64_t *pte, void *va, void *aux)
-{
-    struct thread *cur    = thread_current ();
-    struct thread *parent = (struct thread *) aux;
+duplicate_pte (uint64_t *pte, void *va, void *aux) {
+	struct thread *current = thread_current ();
+	struct thread *parent = (struct thread *) aux;
+	void *parent_page;
+	void *newpage;
+	bool writable;
 
 	/* 1. TODO: If the parent_page is kernel page, then return immediately. */
 	if (is_kernel_vaddr(va))
@@ -147,25 +147,24 @@ duplicate_pte (uint64_t *pte, void *va, void *aux)
 	}
 	return true;
 }
-
 #endif
 
 /* 부모의 실행 컨텍스트를 복사하는 스레드 함수입니다.
 * 힌트) parent->tf는 프로세스의 사용자 영역 컨텍스트를 유지하지 않습니다.
 * 즉, process_fork의 두 번째 인수를 이 함수에 전달해야 합니다. */
 static void
-__do_fork (void *aux)
-{
+__do_fork (void *aux) {
     struct intr_frame if_;
     struct thread *parent = (struct thread *) aux;
     struct thread *current = thread_current ();
     struct intr_frame *parent_if = &parent->parent_if;
 	bool succ = true;
 
-    memcpy (&if_, p_if, sizeof if_);
+    /* CPU 컨텍스트 복사 */
+    memcpy (&if_, parent_if, sizeof (struct intr_frame));
     if_.R.rax = 0;
 
-    /* 2. 새로운 페이지 테이블 생성 및 복사 */
+    /* 새로운 페이지 테이블 생성 */
     current->pml4 = pml4_create ();
     if (current->pml4 == NULL)
         goto error;
@@ -219,7 +218,6 @@ error:
     sema_up(&current->fork_sema);  // 복제에 실패했으므로 현재 fork용 sema unblock
     exit(TID_ERROR);
 }
-
 /* Switch the current execution context to the f_name.
  * Returns -1 on fail. */
 int
@@ -300,7 +298,6 @@ void argument_stack(char **argv, int argc, struct intr_frame *if_) {
  * 이 함수는 문제 2-2에서 구현될 예정입니다. 현재는 아무 동작도 하지 않습니다.
  */
 int
-process_wait (tid_t child_tid UNUSED) {	// 자식 프로세스, 종료 시 exit status(자식) 반환
 process_wait (tid_t child_tid) {
 	/* XXX: Hint) The pintos exit if process_wait (initd), we recommend you
 	 * XXX:       to add infinite loop here before
@@ -338,7 +335,6 @@ process_exit (void) {
     sema_up(&curr->wait_sema);      // wait() 중인 부모를 깨운다
     sema_down(&curr->exit_sema);    // 부모가 정리할 때까지 대기 (메모리 해제)
 }
-
 
 /* Free the current process's resources. */
 static void
@@ -557,10 +553,6 @@ load (const char *file_name, struct intr_frame *if_) {
 done:
 	/* We arrive here whether the load is successful or not. */
 	// file_close (file); 
-	    if (!success && file != NULL) {          /* ★ CHANGED – 실패 시 close */
-        file_close (file);
-        file = NULL;
-    }
 	return success;
 }
 

@@ -11,6 +11,12 @@
 #include "vm/vm.h"
 #endif
 
+struct file_descriptor {
+    int fd;                  /* 할당된 FD 번호 */
+    struct file *file_p;     /* 실제 파일 포인터 */
+    struct list_elem fd_elem;/* fd_list 에 들어갈 elem */
+};
+
 
 /* States in a thread's life cycle. */
 enum thread_status {
@@ -25,7 +31,7 @@ enum thread_status {
 typedef int tid_t;
 #define MAX_FD_NUM 128
 #define TID_ERROR ((tid_t) -1)          /* Error value for tid_t. */
-#define FDT_PAGES 3
+
 /* Thread priorities. */
 #define PRI_MIN 0                       /* Lowest priority. */
 #define PRI_DEFAULT 31                  /* Default priority. */
@@ -206,5 +212,4 @@ void mlfqs_recalc_recent_cpu(void);
 void mlfqs_recalc_priority(void);
 int allocate_fd (struct file *file);
 struct file *find_file_by_fd(int fd);
-void deallocate_fd (int fd);
 #endif /* THREADS_THREAD_H */
