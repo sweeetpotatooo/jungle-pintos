@@ -1,6 +1,6 @@
 #ifndef USERPROG_PROCESS_H
 #define USERPROG_PROCESS_H
-#define FDCOUNT_LIMIT 1135
+#define FDCOUNT_LIMIT 1150
 
 #include "threads/thread.h"
 

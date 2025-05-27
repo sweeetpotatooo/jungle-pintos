@@ -517,7 +517,7 @@ init_thread (struct thread *t, const char *name, int priority) {
 #ifdef USERPROG
     /* 파일 디스크립터 관리용 필드 초기화
        0=stdin, 1=stdout 2 =stderr 이므로 3부터 시작 */
-    t->last_created_fd = 3;
+    t->last_created_fd = 2;
     list_init(&t->fd_list);
 #endif
 
