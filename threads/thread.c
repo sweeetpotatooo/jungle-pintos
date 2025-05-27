@@ -982,3 +982,4 @@ struct file *find_file_by_fd(int fd) {
     }
     return NULL;  // 모든 요소 검사 후에도 매칭이 없으면 NULL 반환
 }
+
